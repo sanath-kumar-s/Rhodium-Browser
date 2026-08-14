@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize, QPoint
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize, QPoint, QEvent, QObject
 from PyQt6.QtGui import QIcon, QAction, QKeySequence, QFont
 import ctypes
 
@@ -227,6 +227,91 @@ class RhodiumWebEnginePage(QWebEnginePage):
         return super().acceptNavigationRequest(url, nav_type, is_main_frame)
 
 
+class ResizeMoveFilter(QObject):
+    """Intercepts mouse events globally to handle frameless resizing and dragging."""
+    def __init__(self, window):
+        super().__init__()
+        self.win = window
+        self.margin = 8  # Edge border thickness for resizing in pixels
+        self.is_resizing = False
+        self.is_moving = False
+        self.drag_start_pos = QPoint()
+        self.resize_edges = []
+
+    def eventFilter(self, obj, event):
+        # 1. Mouse Press
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            pos = event.globalPosition().toPoint()
+            win_rect = self.win.frameGeometry()
+            
+            # Check if click is near edges
+            self.resize_edges = self._get_edges(pos, win_rect)
+            
+            if self.resize_edges:
+                self.is_resizing = True
+                return True
+            elif pos.y() - win_rect.top() <= 40:  # Top 40px treated as Draggable Titlebar
+                self.is_moving = True
+                self.drag_start_pos = pos - win_rect.topLeft()
+                return True
+
+        # 2. Mouse Move
+        elif event.type() == QEvent.Type.MouseMove:
+            pos = event.globalPosition().toPoint()
+            win_rect = self.win.frameGeometry()
+
+            if self.is_resizing:
+                self._apply_resize(pos)
+                return True
+            elif self.is_moving:
+                self.win.move(pos - self.drag_start_pos)
+                return True
+            else:
+                # Update cursor icon when hovering over window edges
+                edges = self._get_edges(pos, win_rect)
+                self._update_cursor(edges)
+
+        # 3. Mouse Release
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+            self.is_resizing = False
+            self.is_moving = False
+            self.win.unsetCursor()
+
+        return super().eventFilter(obj, event)
+
+    def _get_edges(self, global_pos, win_rect):
+        edges = []
+        x, y = global_pos.x(), global_pos.y()
+        
+        if y >= win_rect.top() and y <= win_rect.bottom():
+            if abs(x - win_rect.left()) <= self.margin: edges.append('left')
+            if abs(x - win_rect.right()) <= self.margin: edges.append('right')
+        if x >= win_rect.left() and x <= win_rect.right():
+            if abs(y - win_rect.top()) <= self.margin: edges.append('top')
+            if abs(y - win_rect.bottom()) <= self.margin: edges.append('bottom')
+            
+        return edges
+
+    def _apply_resize(self, global_pos):
+        geom = self.win.geometry()
+        if 'right' in self.resize_edges: geom.setRight(global_pos.x())
+        if 'bottom' in self.resize_edges: geom.setBottom(global_pos.y())
+        if 'left' in self.resize_edges: geom.setLeft(global_pos.x())
+        if 'top' in self.resize_edges: geom.setTop(global_pos.y())
+        self.win.setGeometry(geom)
+
+    def _update_cursor(self, edges):
+        if ('top' in edges and 'left' in edges) or ('bottom' in edges and 'right' in edges):
+            self.win.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        elif ('top' in edges and 'right' in edges) or ('bottom' in edges and 'left' in edges):
+            self.win.setCursor(Qt.CursorShape.SizeBDiagCursor)
+        elif 'left' in edges or 'right' in edges:
+            self.win.setCursor(Qt.CursorShape.SizeHorCursor)
+        elif 'top' in edges or 'bottom' in edges:
+            self.win.setCursor(Qt.CursorShape.SizeVerCursor)
+        else:
+            self.win.unsetCursor()
+
 # ── Main Browser Window ───────────────────────────────────────────────────────
 class AdvancedBrowser(QMainWindow):
     """RHODIUM – Advanced Browser"""
@@ -238,11 +323,7 @@ class AdvancedBrowser(QMainWindow):
         self.setGeometry(80, 80, 1280, 820)
 
         # Title bar (frameless)
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint | 
-            Qt.WindowType.WindowSystemMenuHint |
-            Qt.WindowType.WindowMinMaxButtonsHint
-        )
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self._drag_pos = QPoint()
 
 
@@ -263,6 +344,13 @@ class AdvancedBrowser(QMainWindow):
         self.init_ui()
         self.apply_global_settings()
         self.setStyleSheet(self.get_stylesheet())
+
+        # Central container widget
+        central = QWidget()
+        layout = QVBoxLayout(central)
+        
+        # ADD PADDING MARGIN: Leave an 8px invisible border for edge detection
+        layout.setContentsMargins(8, 8, 8, 8)
 
     # ── UI Init ───────────────────────────────────────────────────────────────
     def init_ui(self):
@@ -1932,6 +2020,9 @@ def main():
     app.setApplicationName("RHODIUM Browser")
     app.setOrganizationName("Rhodium")
     window = AdvancedBrowser()
+    # Install the Global Event Filter onto QApplication
+    event_filter = ResizeMoveFilter(window)
+    app.installEventFilter(event_filter)
     window.show()
     sys.exit(app.exec())
 
