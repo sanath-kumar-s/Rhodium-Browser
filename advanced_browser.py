@@ -1980,7 +1980,7 @@ class AdvancedBrowser(QMainWindow):
 
             subcontrol-position: right;
 
-            margin-left: 5px;
+            margin-left: 1px;
             margin-right: 1px;
 
             border-radius: 5px;
