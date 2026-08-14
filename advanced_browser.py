@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize, QPoint, QObject, QEvent
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize, QPoint, QObject, QEvent, QPropertyAnimation, QEasingCurve, pyqtProperty
 from PyQt6.QtGui import QIcon, QAction, QKeySequence, QFont
 import ctypes
 
@@ -25,6 +25,7 @@ ICONS_DIR = BASE_DIR / "style" / "icons"
 def icon(name: str) -> QIcon:
     return QIcon(str(ICONS_DIR / name))
 
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--enable-smooth-scrolling"
 
 # ── Settings Dialog ───────────────────────────────────────────────────────────
 class SettingsDialog(QDialog):
@@ -241,6 +242,45 @@ class ResizeMoveFilter(QObject):
         self.drag_start_pos = QPoint()
         self.resize_edges = []
 
+    def _start_window_drag(self, global_pos):
+        """Start dragging the frameless browser window."""
+        win_rect = self.win.frameGeometry()
+
+        self.is_moving = True
+        self.is_resizing = False
+
+        self.drag_start_pos = global_pos - win_rect.topLeft()
+
+    def _can_drag_window(self, global_pos):
+        """Return True only when the user clicked empty browser chrome."""
+
+        local_pos = self.win.mapFromGlobal(global_pos)
+
+        # ---------------------------------------------------------
+        # TOP 8px border
+        # ---------------------------------------------------------
+        if 0 <= local_pos.y() <= 8:
+            return True
+
+        # ---------------------------------------------------------
+        # Empty area of the tab bar
+        # ---------------------------------------------------------
+        tab_bar = self.win.tab_widget.tabBar()
+
+        if tab_bar:
+            tab_pos = tab_bar.mapFromGlobal(global_pos)
+
+            if tab_bar.rect().contains(tab_pos):
+
+                # Only block dragging when click lands on an actual tab.
+                # tabAt() returns -1 for empty tab bar space.
+                if tab_bar.tabAt(tab_pos) >= 0:
+                    return False
+
+                return True
+
+        return False
+
     def eventFilter(self, obj, event):
 
         # =========================================================
@@ -269,15 +309,8 @@ class ResizeMoveFilter(QObject):
             # -----------------------------------------------------
             # WINDOW DRAG
             # -----------------------------------------------------
-            if self._is_drag_area(obj, pos):
-
-                self.is_moving = True
-                self.is_resizing = False
-
-                self.drag_start_pos = (
-                    pos - win_rect.topLeft()
-                )
-
+            if self._can_drag_window(pos):
+                self._start_window_drag(pos)
                 return True
 
             # IMPORTANT:
@@ -352,57 +385,70 @@ class ResizeMoveFilter(QObject):
     # DETERMINE WHETHER THIS IS A WINDOW DRAG AREA
     # =============================================================
 
-    def _is_drag_area(self, obj, global_pos):
-        """Return True only for empty browser chrome, not interactive widgets."""
+    # def _is_drag_area(self, obj, global_pos):
+    #     """
+    #     Determines whether the mouse position is a safe area
+    #     for dragging the frameless browser window.
+    #     """
 
-        # Convert mouse position to window-local coordinates
-        local_pos = self.win.mapFromGlobal(global_pos)
+    #     local_pos = self.win.mapFromGlobal(global_pos)
 
-        # Your toolbar + tabs occupy the top portion of the window.
-        # Allow dragging in the empty 8px border ABOVE them.
-        if local_pos.y() <= 8:
-            widget = QApplication.widgetAt(global_pos)
+    #     # =========================================================
+    #     # 1. TOP 8px WINDOW BORDER
+    #     # =========================================================
+    #     #
+    #     # This area is deliberately reserved for dragging.
+    #     # Do NOT use widgetAt() here because the top-level layout
+    #     # can still report a child widget.
+    #     #
+    #     if 0 <= local_pos.y() <= 8:
+    #         return True
 
-            # If there is an actual widget there, let that widget handle it.
-            if widget is not None and widget != self.win:
-                return False
+    #     # =========================================================
+    #     # 2. EMPTY AREA OF TAB BAR
+    #     # =========================================================
 
-            return True
+    #     tab_bar = self.win.tab_widget.tabBar()
 
-        # -------------------------------------------------------------
-        # Allow dragging from EMPTY space in the tab-bar area.
-        # -------------------------------------------------------------
-        tab_bar = self.win.tab_widget.tabBar()
+    #     if tab_bar is not None:
 
-        if tab_bar is not None:
-            tab_pos = tab_bar.mapFromGlobal(global_pos)
+    #         tab_pos = tab_bar.mapFromGlobal(global_pos)
 
-            if tab_bar.rect().contains(tab_pos):
+    #         if tab_bar.rect().contains(tab_pos):
 
-                widget = QApplication.widgetAt(global_pos)
+    #             widget = QApplication.widgetAt(global_pos)
 
-                # Clicking an actual tab/button must go to the widget.
-                if widget is not None:
+    #             # If we're actually over a tab, don't steal the click.
+    #             if widget is not None:
 
-                    current = widget
+    #                 current = widget
 
-                    while current is not None:
+    #                 while current is not None:
 
-                        if current in (
-                            tab_bar,
-                            self.win.tab_widget,
-                        ):
-                            return False
+    #                     # Actual tab
+    #                     if current is tab_bar:
 
-                        if current == self.win:
-                            break
+    #                         # Determine whether we're actually over
+    #                         # a tab instead of empty tab-bar space.
+    #                         tab_index = tab_bar.tabAt(tab_pos)
 
-                        current = current.parentWidget()
+    #                         if tab_index >= 0:
+    #                             return False
 
-                # Empty tab-bar space can drag the window.
-                return True
+    #                         # Empty tab-bar area
+    #                         return True
 
-        return False
+    #                     current = current.parentWidget()
+
+    #             # Empty tab-bar area
+    #             return True
+
+    #     # =========================================================
+    #     # 3. EVERYTHING ELSE
+    #     # =========================================================
+
+    #     return False
+
     # =============================================================
     # WINDOW EDGE DETECTION
     # =============================================================
@@ -556,6 +602,87 @@ class ResizeMoveFilter(QObject):
         else:
 
             self.win.unsetCursor()
+
+class SmoothWebEngineView(QWebEngineView):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self._scroll_target = 0
+        self._scroll_animation = None
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+
+        if delta == 0:
+            return
+
+        # Chromium normally scrolls around 40-120 px per wheel step.
+        # We increase it slightly for a browser-like feel.
+        scroll_amount = int(delta * 1.5)
+
+        # Ask the page for its current scroll position.
+        self.page().runJavaScript(
+            "window.scrollY",
+            self._start_smooth_scroll
+        )
+
+        # Store the requested movement.
+        self._pending_scroll = scroll_amount
+
+        event.accept()
+
+    def _start_smooth_scroll(self, current_y):
+        if current_y is None:
+            return
+
+        current_y = float(current_y)
+
+        target = current_y - self._pending_scroll
+
+        # Prevent going below the top.
+        target = max(0, target)
+
+        self._scroll_target = target
+
+        # Stop previous animation.
+        if self._scroll_animation:
+            self._scroll_animation.stop()
+
+        self._scroll_animation = QPropertyAnimation(
+            self,
+            b"scrollPosition"
+        )
+
+        self._scroll_animation.setDuration(280)
+
+        self._scroll_animation.setStartValue(current_y)
+        self._scroll_animation.setEndValue(target)
+
+        self._scroll_animation.setEasingCurve(
+            QEasingCurve.Type.OutCubic
+        )
+
+        self._scroll_animation.start(
+            QPropertyAnimation.DeletionPolicy.DeleteWhenStopped
+        )
+
+    def get_scroll_position(self):
+        return self._scroll_target
+
+    def set_scroll_position(self, value):
+        value = float(value)
+
+        self.page().runJavaScript(
+            f"window.scrollTo(0, {value});"
+        )
+
+        self._scroll_target = value
+
+    scrollPosition = pyqtProperty(
+        float,
+        fget=get_scroll_position,
+        fset=set_scroll_position
+    )
 
 # ── Main Browser Window ───────────────────────────────────────────────────────
 class AdvancedBrowser(QMainWindow):
@@ -889,19 +1016,19 @@ class AdvancedBrowser(QMainWindow):
         # SETTINGS
         # ─────────────────────────────────────────────────────────────
 
-        self.btn_settings = QPushButton()
-        self.btn_settings.setObjectName("NavBtn")
-        self.btn_settings.setIcon(icon("settings.png"))
-        self.btn_settings.setIconSize(QSize(17, 17))
-        self.btn_settings.setFixedSize(34, 34)
-        self.btn_settings.setToolTip(
-            "Settings  (Ctrl+,)"
-        )
-        self.btn_settings.clicked.connect(
-            self.open_settings
-        )
+        # self.btn_settings = QPushButton()
+        # self.btn_settings.setObjectName("NavBtn")
+        # self.btn_settings.setIcon(icon("settings.png"))
+        # self.btn_settings.setIconSize(QSize(17, 17))
+        # self.btn_settings.setFixedSize(34, 34)
+        # self.btn_settings.setToolTip(
+        #     "Settings  (Ctrl+,)"
+        # )
+        # self.btn_settings.clicked.connect(
+        #     self.open_settings
+        # )
 
-        bar.addWidget(self.btn_settings)
+        # bar.addWidget(self.btn_settings)
 
         # ─────────────────────────────────────────────────────────────
         # MENU
@@ -919,7 +1046,62 @@ class AdvancedBrowser(QMainWindow):
 
         bar.addWidget(self.btn_menu)
 
+        # ------------------------------------------------------------------
+        # APPLICATION BUTTONS  (minimize / maximize / close)
+        # ------------------------------------------------------------------
+
+        # bar.addSeparator()
+
+        self.btn_minimize = QPushButton()
+        self.btn_minimize.setObjectName("WinMinBtn")
+        self.btn_minimize.setIcon(icon("win-minimize.png"))
+        self.btn_minimize.setIconSize(QSize(14, 14))
+        self.btn_minimize.setFixedSize(34, 34)
+        self.btn_minimize.setFlat(True)
+        self.btn_minimize.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_minimize.setToolTip("Minimize")
+        self.btn_minimize.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_minimize.clicked.connect(self.showMinimized)
+
+        self.btn_maximize = QPushButton()
+        self.btn_maximize.setObjectName("WinMaxBtn")
+        self.btn_maximize.setIcon(icon("win-maximize.png"))
+        self.btn_maximize.setIconSize(QSize(14, 14))
+        self.btn_maximize.setFixedSize(34, 34)
+        self.btn_maximize.setFlat(True)
+        self.btn_maximize.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_maximize.setToolTip("Maximize / Restore")
+        self.btn_maximize.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_maximize.clicked.connect(lambda: self.toggle_maximize())
+
+        self.btn_close_win = QPushButton()
+        self.btn_close_win.setObjectName("WinCloseBtn")
+        self.btn_close_win.setIcon(icon("win-close.png"))
+        self.btn_close_win.setIconSize(QSize(14, 14))
+        self.btn_close_win.setFixedSize(34, 34)
+        self.btn_close_win.setFlat(True)
+        self.btn_close_win.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_close_win.setToolTip("Close")
+        self.btn_close_win.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_close_win.clicked.connect(self.close)
+
+        bar.addWidget(self.btn_minimize)
+        bar.addWidget(self.btn_maximize)
+        bar.addWidget(self.btn_close_win)
+
         return bar
+
+
+
+    def toggle_maximize(self):
+        if self.isMaximized():
+            self.showNormal()
+            self.btn_maximize.setIconSize(QSize(12, 12))
+            self.setGeometry(80, 80, 1280, 820)
+        else:
+            self.showMaximized()
+            self.btn_maximize.setIconSize(QSize(14, 14))
+
 
     # ── Menus ─────────────────────────────────────────────────────────────────
     def create_main_menu(self) -> QMenu:
@@ -1021,7 +1203,8 @@ class AdvancedBrowser(QMainWindow):
                 "about:home"
             )
 
-        view = QWebEngineView()
+        view = SmoothWebEngineView()
+        
 
         page = RhodiumWebEnginePage(
             self,
@@ -1934,6 +2117,33 @@ class AdvancedBrowser(QMainWindow):
             padding: 6px 12px 4px;
 
             font-weight: 600;
+        }
+
+        QPushButton#WinMinBtn,
+        QPushButton#WinMaxBtn,
+        QPushButton#WinCloseBtn {
+            border: none;
+            background: transparent;
+            color: #aaaaaa;
+            font-size: 15px;
+            border-radius: 5px;
+        }
+
+        QPushButton#WinMinBtn:hover,
+        QPushButton#WinMaxBtn:hover {
+            background: #2a2a2a;
+            color: white;
+        }
+
+        QPushButton#WinCloseBtn:hover {
+            background: #e81123;
+            color: white;
+        }
+
+        QPushButton#WinMinBtn:pressed,
+        QPushButton#WinMaxBtn:pressed,
+        QPushButton#WinCloseBtn:pressed {
+            background: #444444;
         }
 
 
