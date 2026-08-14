@@ -14,8 +14,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize, QPoint
 from PyQt6.QtGui import QIcon, QAction, QKeySequence, QFont
+import ctypes
 
 # ── Icon helper ───────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
@@ -36,6 +37,8 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(480)
         self.setWindowIcon(icon("settings.png"))
         self.init_ui()
+        self.set_title_bar_color("#1e1e2e")
+        
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -128,6 +131,25 @@ class SettingsDialog(QDialog):
         self.zoom_spin.setValue(100)
         self.theme_combo.setCurrentText("Dark")
 
+    def set_title_bar_color(self, hex_color: str):
+        # Convert hex string to COLORREF (BGR format)
+        hex_color = hex_color.lstrip('#')
+        r, g, b = [int(hex_color[i:i+2], 16) for i in (0, 2, 4)]
+        color_ref = r | (g << 8) | (b << 16)
+
+        try:
+            # DWMWA_CAPTION_COLOR attribute ID is 35 on Windows 11
+            DWMWA_CAPTION_COLOR = 35
+            hwnd = int(self.winId())
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 
+                DWMWA_CAPTION_COLOR, 
+                ctypes.byref(ctypes.c_uint(color_ref)), 
+                ctypes.sizeof(ctypes.c_uint)
+            )
+        except Exception as e:
+            print(f"Failed to set native title bar color: {e}")
+
 
 # ── Inline Find Bar ───────────────────────────────────────────────────────────
 class FindBar(QFrame):
@@ -214,6 +236,15 @@ class AdvancedBrowser(QMainWindow):
         self.setWindowTitle("RHODIUM Browser")
         self.setWindowIcon(icon("home.png"))
         self.setGeometry(80, 80, 1280, 820)
+
+        # Title bar (frameless)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowSystemMenuHint |
+            Qt.WindowType.WindowMinMaxButtonsHint
+        )
+        self._drag_pos = QPoint()
+
 
         # Data paths
         self.config_dir = Path.home() / ".rhodium"
@@ -909,376 +940,990 @@ class AdvancedBrowser(QMainWindow):
         layout.addWidget(te)
         dlg.exec()
 
+    # -- Window movement handlers (frameless) ------------------------------------------------------
+    def mousePressEvent(self, event):
+        # Trigger drag only on Left Mouse Click
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Store the difference between global mouse position and window top-left corner
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        # Move window if left button is being held down while dragging
+        if event.buttons() == Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+
     # ── Stylesheet ────────────────────────────────────────────────────────────
     def get_stylesheet(self) -> str:
         return """
-        /* ── Global ── */
-        * { font-family: "Segoe UI", "Inter", Arial, sans-serif; }
+        /* =========================================================
+       RHODIUM BROWSER — PROFESSIONAL DARK UI
+       ========================================================= */
 
-        QMainWindow { background: #0a0a0d; }
-
-        /* ── Navigation bar ── */
-        QToolBar#NavBar {
-            background: #111116;
-            border-bottom: 1px solid #1e1e2a;
-            padding: 4px 8px;
-            spacing: 4px;
+        * {
+            font-family: "Segoe UI", "Inter", Arial, sans-serif;
         }
 
-        /* ── Navigation icon buttons ── */
+        QMainWindow {
+            background: #0b0c0f;
+            color: #e7e9ed;
+        }
+
+        /* =========================================================
+        NAVIGATION BAR
+        ========================================================= */
+
+        QToolBar#NavBar {
+            background: #111318;
+            border: none;
+            border-bottom: 1px solid #20232a;
+            padding: 5px 8px;
+            spacing: 3px;
+            min-height: 42px;
+        }
+
+        /* =========================================================
+        NAVIGATION BUTTONS
+        ========================================================= */
+
         QPushButton#NavBtn {
             background: transparent;
+            color: #aeb3bc;
             border: none;
-            border-radius: 8px;
-            padding: 4px;
+            border-radius: 7px;
+            padding: 6px;
+            min-width: 30px;
+            min-height: 30px;
         }
+
         QPushButton#NavBtn:hover {
-            background: #1e1e2a;
+            background: #1b1e24;
+            color: #f1f3f5;
         }
+
         QPushButton#NavBtn:pressed {
-            background: #2a2a3a;
+            background: #242831;
+            color: #ffffff;
         }
 
-        /* ── URL bar ── */
+        QPushButton#NavBtn:disabled {
+            color: #4d525c;
+        }
+
+        /* =========================================================
+        URL BAR
+        ========================================================= */
+
         QLineEdit#UrlBar {
-            background: #1a1a22;
-            color: #e8e8f0;
-            border: 1.5px solid #2a2a38;
-            border-radius: 18px;
-            padding: 6px 18px;
+            background: #181b21;
+            color: #e8eaed;
+
+            border: 1px solid #292d35;
+            border-radius: 8px;
+
+            padding: 7px 14px;
+
             font-size: 13px;
-            selection-background-color: #3060d0;
-        }
-        QLineEdit#UrlBar:focus {
-            border-color: #3060d0;
-            background: #1e1e2c;
+            selection-background-color: #315fa8;
+            selection-color: #ffffff;
         }
 
-        /* ── Tabs ── */
+        QLineEdit#UrlBar:hover {
+            background: #1b1e24;
+            border-color: #343944;
+        }
+
+        QLineEdit#UrlBar:focus {
+            background: #191c22;
+            border: 1px solid #426cae;
+        }
+
+        /* =========================================================
+        TABS
+        ========================================================= */
+
         QTabWidget::pane {
             border: none;
-            background: #060609;
+            background: #0b0c0f;
         }
+
         QTabBar {
-            background: #111116;
+            background: #111318;
         }
+
         QTabBar::tab {
-            background: #111116;
-            color: #7a7a9a;
+            background: #111318;
+            color: #777d87;
+
             border: none;
             border-bottom: 2px solid transparent;
-            padding: 8px 18px 8px 14px;
-            min-width: 130px;
+
+            padding: 8px 14px;
+            min-width: 120px;
+
             font-size: 12px;
         }
+
         QTabBar::tab:selected {
-            background: #060609;
-            color: #ffffff;
-            border-bottom: 2px solid #3060d0;
+            background: #0b0c0f;
+            color: #e9ebef;
+            border-bottom: 2px solid #4b78bd;
         }
+
         QTabBar::tab:hover:!selected {
-            color: #c0c0e0;
-            background: #161620;
+            background: #181b20;
+            color: #bfc4cc;
         }
+
         QTabBar::close-button {
             image: url(style/icons/close (2).png);
             subcontrol-position: right;
+            margin-right: 3px;
         }
+
         QTabBar::close-button:hover {
-            background: #2a2a3a;
+            background: #272b32;
             border-radius: 4px;
         }
 
-        /* ── Status bar ── */
+        /* =========================================================
+        STATUS BAR
+        ========================================================= */
+
         QStatusBar {
-            background: #111116;
-            border-top: 1px solid #1e1e2a;
+            background: #111318;
+            border-top: 1px solid #20232a;
+            color: #686e78;
         }
+
         QLabel#StatusLabel {
-            color: #606080;
+            color: #6d737d;
             font-size: 11px;
             padding: 0 8px;
         }
 
-        /* ── Menus ── */
+        /* =========================================================
+        MENUS
+        ========================================================= */
+
         QMenu {
-            background: #16161e;
-            color: #e0e0f0;
-            border: 1px solid #2a2a38;
-            border-radius: 10px;
-            padding: 4px 0;
-        }
-        QMenu::item {
-            padding: 7px 22px 7px 14px;
-            border-radius: 6px;
-            margin: 1px 4px;
-        }
-        QMenu::item:selected {
-            background: #2a3a6a;
-            color: #ffffff;
-        }
-        QMenu::separator {
-            height: 1px;
-            background: #2a2a38;
-            margin: 4px 10px;
-        }
-        QMenu::section {
-            color: #555570;
-            font-size: 10px;
-            padding: 4px 14px 2px;
-            text-transform: uppercase;
+            background: #17191e;
+            color: #e1e4e8;
+
+            border: 1px solid #2b2f36;
+            border-radius: 8px;
+
+            padding: 5px;
         }
 
-        /* ── Dialogs ── */
-        QDialog {
-            background: #111116;
-            color: #e0e0f0;
-            border-radius: 12px;
+        QMenu::item {
+            padding: 7px 30px 7px 12px;
+            border-radius: 5px;
+            margin: 1px;
         }
-        QLabel {
-            color: #c0c0e0;
-        }
-        QLabel#SettingsTitle {
+
+        QMenu::item:selected {
+            background: #252a32;
             color: #ffffff;
+        }
+
+        QMenu::separator {
+            height: 1px;
+            background: #292d34;
+            margin: 5px 8px;
+        }
+
+        QMenu::section {
+            color: #686e78;
+            font-size: 10px;
+            padding: 5px 12px 3px;
+        }
+
+        /* =========================================================
+        DIALOGS
+        ========================================================= */
+
+        QDialog {
+            background: #111318;
+            color: #e1e4e8;
+        }
+
+        QLabel {
+            color: #b9bec7;
+        }
+
+        QLabel#SettingsTitle {
+            color: #f2f4f7;
             font-size: 18px;
-            font-weight: bold;
+            font-weight: 600;
         }
+
         QLineEdit {
-            background: #1a1a24;
-            color: #e0e0f0;
-            border: 1.5px solid #2a2a38;
-            border-radius: 8px;
-            padding: 6px 10px;
+            background: #181b21;
+            color: #e1e4e8;
+
+            border: 1px solid #2b2f36;
+            border-radius: 7px;
+
+            padding: 7px 10px;
         }
+
+        QLineEdit:hover {
+            border-color: #383d46;
+        }
+
         QLineEdit:focus {
-            border-color: #3060d0;
+            border-color: #426cae;
         }
+
         QPushButton {
-            background: #1e1e2c;
-            color: #c0c0e0;
-            border: 1px solid #2a2a3c;
-            border-radius: 8px;
+            background: #1b1e24;
+            color: #c6cad1;
+
+            border: 1px solid #2b2f36;
+            border-radius: 7px;
+
             padding: 7px 14px;
             font-size: 12px;
         }
+
         QPushButton:hover {
-            background: #2a2a3c;
+            background: #252930;
             color: #ffffff;
+            border-color: #383d46;
         }
+
         QPushButton:pressed {
-            background: #3060d0;
-            color: #ffffff;
-            border-color: #3060d0;
+            background: #30353e;
         }
+
         QPushButton#PrimaryBtn {
-            background: #2050b0;
+            background: #315f9d;
             color: #ffffff;
             border: none;
         }
+
         QPushButton#PrimaryBtn:hover {
-            background: #3060d0;
-        }
-        QCheckBox { color: #c0c0e0; spacing: 6px; }
-        QCheckBox::indicator {
-            width: 16px;
-            height: 16px;
-            border-radius: 4px;
-            border: 1.5px solid #3a3a52;
-            background: #1a1a24;
-        }
-        QCheckBox::indicator:checked {
-            background: #3060d0;
-            border-color: #3060d0;
-        }
-        QSpinBox, QComboBox {
-            background: #1a1a24;
-            color: #e0e0f0;
-            border: 1.5px solid #2a2a38;
-            border-radius: 8px;
-            padding: 5px 8px;
-        }
-        QSpinBox:focus, QComboBox:focus { border-color: #3060d0; }
-        QListWidget {
-            background: #1a1a24;
-            color: #d0d0e8;
-            border: 1px solid #2a2a38;
-            border-radius: 8px;
-            padding: 4px;
-        }
-        QListWidget::item:selected { background: #2a3a6a; border-radius: 6px; }
-        QTextEdit {
-            background: #1a1a24;
-            color: #d0d0e8;
-            border: 1px solid #2a2a38;
-            border-radius: 8px;
+            background: #3b6fae;
         }
 
-        /* ── Find bar ── */
+        /* =========================================================
+        CHECKBOX
+        ========================================================= */
+
+        QCheckBox {
+            color: #bfc4cc;
+            spacing: 6px;
+        }
+
+        QCheckBox::indicator {
+            width: 15px;
+            height: 15px;
+
+            border-radius: 4px;
+            border: 1px solid #3a3f48;
+            background: #181b21;
+        }
+
+        QCheckBox::indicator:checked {
+            background: #426cae;
+            border-color: #426cae;
+        }
+
+        /* =========================================================
+        INPUTS
+        ========================================================= */
+
+        QSpinBox,
+        QComboBox {
+            background: #181b21;
+            color: #e1e4e8;
+
+            border: 1px solid #2b2f36;
+            border-radius: 7px;
+
+            padding: 6px 8px;
+        }
+
+        QSpinBox:focus,
+        QComboBox:focus {
+            border-color: #426cae;
+        }
+
+        QListWidget {
+            background: #181b21;
+            color: #d0d4da;
+
+            border: 1px solid #2b2f36;
+            border-radius: 7px;
+
+            padding: 4px;
+        }
+
+        QListWidget::item:selected {
+            background: #292f38;
+            border-radius: 5px;
+        }
+
+        QTextEdit {
+            background: #181b21;
+            color: #d0d4da;
+
+            border: 1px solid #2b2f36;
+            border-radius: 7px;
+        }
+
+        /* =========================================================
+        FIND BAR
+        ========================================================= */
+
         QFrame#FindBar {
-            background: #161620;
-            border-top: 1px solid #2a2a38;
+            background: #15171c;
+            border-top: 1px solid #292d34;
             max-height: 44px;
         }
+
         QLineEdit#FindInput {
-            border-radius: 14px;
-            padding: 5px 12px;
+            background: #1b1e24;
+            border-radius: 7px;
+            padding: 5px 10px;
             max-width: 320px;
         }
+
         QPushButton#FindClose {
             background: transparent;
             border: none;
-            border-radius: 6px;
+            border-radius: 5px;
         }
-        QPushButton#FindClose:hover { background: #2a2a3a; }
+
+        QPushButton#FindClose:hover {
+            background: #252930;
+        }
+        
         """
 
     # ── Home Page HTML ────────────────────────────────────────────────────────
     def get_home_page_html(self) -> str:
         return """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Rhodium Home</title>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: #000;
-    color: #fff;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    overflow: hidden;
-    user-select: none;
-  }
-  /* Globe */
-  .globe {
-    width: 80px; height: 80px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 38% 36%, #1a8fe8 0%, #0e5fbc 55%, #082e6e 100%);
-    box-shadow: 0 0 40px rgba(30,110,240,.45), 0 0 0 3px rgba(255,255,255,.08);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 44px;
-    margin-bottom: 36px;
-    animation: float 5s ease-in-out infinite;
-  }
-  @keyframes float {
-    0%,100% { transform: translateY(0); }
-    50%      { transform: translateY(-6px); }
-  }
-  /* Search */
-  .search-wrap {
-    position: relative; width: 560px; margin-bottom: 48px;
-  }
-  .search-icon {
-    position: absolute; left: 20px; top: 50%;
-    transform: translateY(-50%);
-    color: #555; font-size: 18px; pointer-events: none;
-  }
-  .search-wrap input {
-    width: 100%;
-    padding: 16px 56px;
-    background: #111;
-    border: 1.5px solid #2a2a2a;
-    border-radius: 30px;
-    color: #fff;
-    font-size: 15px;
-    outline: none;
-    transition: border-color .25s, background .25s;
-  }
-  .search-wrap input::placeholder { color: #666; }
-  .search-wrap input:focus {
-    border-color: #3060d0;
-    background: #141420;
-  }
-  /* Quick links */
-  .links {
-    display: flex; gap: 18px;
-  }
-  .link {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 10px; cursor: pointer; text-decoration: none;
-    color: #888;
-    font-size: 12px; font-weight: 500;
-    transition: color .2s;
-  }
-  .link:hover { color: #fff; }
-  .link-box {
-    width: 58px; height: 58px;
-    background: #111;
-    border: 1px solid #222;
-    border-radius: 16px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px;
-    transition: background .2s, border-color .2s, transform .15s;
-  }
-  .link:hover .link-box {
-    background: #1a1a26;
-    border-color: #3a3a50;
-    transform: translateY(-3px);
-  }
-  .link-box.dashed {
-    border-style: dashed;
-    color: #444;
-  }
-  .link:hover .link-box.dashed { color: #888; }
-</style>
-</head>
-<body>
-  <div class="globe">🌐</div>
+    <html lang="en">
+    <head>
+    <meta charset="UTF-8">
+    <title>Rhodium</title>
 
-  <div class="search-wrap">
-    <span class="search-icon">🔍</span>
-    <input id="q" type="text" placeholder="Search the web or type a URL" autofocus>
-  </div>
+    <style>
 
-  <div class="links">
-    <div class="link" onclick="nav('https://mail.google.com')">
-      <div class="link-box">✉️</div><span>Mail</span>
-    </div>
-    <div class="link" onclick="nav('https://youtube.com')">
-      <div class="link-box">▶️</div><span>Video</span>
-    </div>
-    <div class="link" onclick="nav('https://github.com')">
-      <div class="link-box">&lt;/&gt;</div><span>Dev</span>
-    </div>
-    <div class="link" onclick="nav('https://news.google.com')">
-      <div class="link-box">📰</div><span>News</span>
-    </div>
-    <div class="link" onclick="nav('https://twitter.com')">
-      <div class="link-box">💬</div><span>Social</span>
-    </div>
-    <div class="link" onclick="nav('https://amazon.com')">
-      <div class="link-box">🛍️</div><span>Shop</span>
-    </div>
-    <div class="link" onclick="nav('https://figma.com')">
-      <div class="link-box">🎨</div><span>Design</span>
-    </div>
-    <div class="link" onclick="addLink()">
-      <div class="link-box dashed">+</div><span>Add</span>
-    </div>
-  </div>
-
-<script>
-  document.getElementById('q').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      const v = e.target.value.trim();
-      if (v) nav(v);
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
     }
-  });
-  function nav(q) {
-    window.location.href = 'rhodium://navigate?q=' + encodeURIComponent(q);
-  }
-  function addLink() {
-    const name = prompt('Link name:');
-    const url  = prompt('URL:');
-    if (url) nav(url);
-  }
-</script>
-</body>
-</html>"""
+
+    html,
+    body {
+        width: 100%;
+        height: 100%;
+    }
+
+    body {
+        background:
+            radial-gradient(
+                circle at 50% 38%,
+                rgba(55, 77, 110, 0.10) 0%,
+                rgba(15, 17, 21, 0.04) 28%,
+                transparent 52%
+            ),
+            #0b0c0f;
+
+        color: #e7e9ed;
+
+        font-family:
+            "Segoe UI",
+            Inter,
+            -apple-system,
+            BlinkMacSystemFont,
+            sans-serif;
+
+        display: flex;
+        justify-content: center;
+        align-items: center;
+
+        height: 100vh;
+
+        overflow: hidden;
+        user-select: none;
+    }
+
+    /* =========================================================
+    MAIN
+    ========================================================= */
+
+    .container {
+        width: 680px;
+        max-width: calc(100vw - 60px);
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        transform: translateY(-28px);
+    }
+
+    /* =========================================================
+    BRAND
+    ========================================================= */
+
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+
+        margin-bottom: 34px;
+
+        color: #e9ebef;
+
+        font-size: 25px;
+        font-weight: 600;
+        letter-spacing: -0.7px;
+    }
+
+    .brand-mark {
+        width: 38px;
+        height: 38px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        border-radius: 10px;
+
+        background: linear-gradient(
+            145deg,
+            #26384f,
+            #172131
+        );
+
+        border: 1px solid #35485f;
+
+        box-shadow:
+            0 8px 25px rgba(0,0,0,.25);
+    }
+
+    .brand-mark svg {
+        width: 21px;
+        height: 21px;
+
+        stroke: #9cb7d8;
+    }
+
+    /* =========================================================
+    SEARCH
+    ========================================================= */
+
+    .search {
+        width: 100%;
+        height: 50px;
+
+        display: flex;
+        align-items: center;
+
+        background: #15171b;
+
+        border: 1px solid #2b2f36;
+        border-radius: 10px;
+
+        transition:
+            border-color .18s ease,
+            background .18s ease,
+            box-shadow .18s ease;
+    }
+
+    .search:hover {
+        background: #171a1f;
+        border-color: #363b44;
+    }
+
+    .search:focus-within {
+        background: #171a1f;
+        border-color: #466b9f;
+
+        box-shadow:
+            0 0 0 3px rgba(70,107,159,.10);
+    }
+
+    .search-icon {
+        width: 20px;
+        height: 20px;
+
+        margin-left: 17px;
+        margin-right: 12px;
+
+        color: #777e89;
+    }
+
+    .search input {
+        width: 100%;
+        height: 100%;
+
+        background: transparent;
+        border: none;
+        outline: none;
+
+        color: #e9ebef;
+
+        font-size: 14px;
+    }
+
+    .search input::placeholder {
+        color: #777d87;
+    }
+
+    /* =========================================================
+    SHORTCUTS
+    ========================================================= */
+
+    .shortcuts {
+        width: 100%;
+
+        display: flex;
+        justify-content: center;
+
+        gap: 8px;
+
+        margin-top: 28px;
+    }
+
+    .shortcut {
+        width: 76px;
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        gap: 8px;
+
+        color: #777d87;
+
+        font-size: 11px;
+
+        text-decoration: none;
+
+        cursor: pointer;
+    }
+
+    .shortcut-button {
+        width: 42px;
+        height: 42px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        background: #15171b;
+
+        border: 1px solid #282c33;
+        border-radius: 9px;
+
+        transition:
+            background .15s ease,
+            border-color .15s ease,
+            transform .15s ease;
+    }
+
+    .shortcut-button svg {
+        width: 18px;
+        height: 18px;
+
+        stroke: #8e96a1;
+    }
+
+    .shortcut:hover {
+        color: #cdd1d7;
+    }
+
+    .shortcut:hover .shortcut-button {
+        background: #1b1e23;
+        border-color: #3a4049;
+
+        transform: translateY(-2px);
+    }
+
+    .shortcut:hover svg {
+        stroke: #c5ccd5;
+    }
+
+    /* ADD BUTTON */
+
+    .shortcut.add .shortcut-button {
+        border-style: dashed;
+    }
+
+    .shortcut.add svg {
+        stroke: #666d77;
+    }
+
+    /* =========================================================
+    FOOTER
+    ========================================================= */
+
+    .footer {
+        margin-top: 34px;
+
+        color: #4f555e;
+
+        font-size: 10px;
+        letter-spacing: .2px;
+    }
+
+    </style>
+    </head>
+
+    <body>
+
+    <div class="container">
+
+        <!-- BRAND -->
+
+        <div class="brand">
+
+            <div class="brand-mark">
+
+                <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+
+                    <circle cx="12" cy="12" r="8.5"/>
+                    <path d="M3.8 12h16.4"/>
+                    <path d="M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5S14.4 18.2 12 20.5"/>
+                    <path d="M12 3.5C9.6 5.8 8.4 8.6 8.4 12s1.2 6.2 3.6 8.5"/>
+
+                </svg>
+
+            </div>
+
+            <span>Rhodium</span>
+
+        </div>
+
+
+        <!-- SEARCH -->
+
+        <div class="search">
+
+            <svg
+                class="search-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round">
+
+                <circle cx="11" cy="11" r="6.5"/>
+                <path d="m16 16 4 4"/>
+
+            </svg>
+
+            <input
+                id="q"
+                type="text"
+                placeholder="Search or enter address"
+                autocomplete="off"
+                autofocus
+            >
+
+        </div>
+
+
+        <!-- SHORTCUTS -->
+
+        <div class="shortcuts">
+
+            <!-- Mail -->
+
+            <div
+                class="shortcut"
+                onclick="nav('https://mail.google.com')">
+
+                <div class="shortcut-button">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+
+                        <rect x="3" y="5" width="18" height="14" rx="2"/>
+                        <path d="m4 7 8 6 8-6"/>
+
+                    </svg>
+
+                </div>
+
+                <span>Mail</span>
+
+            </div>
+
+
+            <!-- Video -->
+
+            <div
+                class="shortcut"
+                onclick="nav('https://youtube.com')">
+
+                <div class="shortcut-button">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+
+                        <rect x="3" y="5" width="18" height="14" rx="3"/>
+                        <path d="m10 9 5 3-5 3z"/>
+
+                    </svg>
+
+                </div>
+
+                <span>Video</span>
+
+            </div>
+
+
+            <!-- Developer -->
+
+            <div
+                class="shortcut"
+                onclick="nav('https://github.com')">
+
+                <div class="shortcut-button">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+
+                        <path d="m8 8-4 4 4 4"/>
+                        <path d="m16 8 4 4-4 4"/>
+                        <path d="m14 5-4 14"/>
+
+                    </svg>
+
+                </div>
+
+                <span>Developer</span>
+
+            </div>
+
+
+            <!-- News -->
+
+            <div
+                class="shortcut"
+                onclick="nav('https://news.google.com')">
+
+                <div class="shortcut-button">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+
+                        <rect x="4" y="4" width="16" height="16" rx="2"/>
+                        <path d="M8 8h8"/>
+                        <path d="M8 12h8"/>
+                        <path d="M8 16h5"/>
+
+                    </svg>
+
+                </div>
+
+                <span>News</span>
+
+            </div>
+
+
+            <!-- Social -->
+
+            <div
+                class="shortcut"
+                onclick="nav('https://twitter.com')">
+
+                <div class="shortcut-button">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+
+                        <path d="M5 6h14v9a3 3 0 0 1-3 3H8l-3 3v-15z"/>
+                        <path d="M8 10h8"/>
+                        <path d="M8 13h5"/>
+
+                    </svg>
+
+                </div>
+
+                <span>Social</span>
+
+            </div>
+
+
+            <!-- Shopping -->
+
+            <div
+                class="shortcut"
+                onclick="nav('https://amazon.com')">
+
+                <div class="shortcut-button">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+
+                        <path d="M4 5h2l2 11h10l2-8H7"/>
+                        <circle cx="10" cy="20" r="1"/>
+                        <circle cx="18" cy="20" r="1"/>
+
+                    </svg>
+
+                </div>
+
+                <span>Shopping</span>
+
+            </div>
+
+
+            <!-- Design -->
+
+            <div
+                class="shortcut"
+                onclick="nav('https://figma.com')">
+
+                <div class="shortcut-button">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+
+                        <circle cx="9" cy="6" r="3"/>
+                        <circle cx="15" cy="6" r="3"/>
+                        <circle cx="9" cy="12" r="3"/>
+                        <circle cx="15" cy="12" r="3"/>
+                        <path d="M9 15v3a3 3 0 1 0 3-3v-3"/>
+
+                    </svg>
+
+                </div>
+
+                <span>Design</span>
+
+            </div>
+
+
+            <!-- Add -->
+
+            <div
+                class="shortcut add"
+                onclick="addLink()">
+
+                <div class="shortcut-button">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round">
+
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+
+                    </svg>
+
+                </div>
+
+                <span>Add</span>
+
+            </div>
+
+        </div>
+
+
+        <div class="footer">
+            RHODIUM
+        </div>
+
+    </div>
+
+
+    <script>
+
+    document
+        .getElementById('q')
+        .addEventListener('keydown', e => {
+
+            if (e.key === 'Enter') {
+
+                const value = e.target.value.trim();
+
+                if (value) {
+                    nav(value);
+                }
+
+            }
+
+        });
+
+
+    function nav(query) {
+
+        window.location.href =
+            'rhodium://navigate?q=' +
+            encodeURIComponent(query);
+
+    }
+
+
+    function addLink() {
+
+        const name = prompt('Link name:');
+        const url = prompt('URL:');
+
+        if (url) {
+            nav(url);
+        }
+
+    }
+
+    </script>
+
+    </body>
+    </html>"""
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
