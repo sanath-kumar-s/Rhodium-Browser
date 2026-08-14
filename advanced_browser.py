@@ -10,13 +10,12 @@ from PyQt6.QtWidgets import (
     QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox,
     QMessageBox, QMenu, QInputDialog, QToolBar, QTabWidget, QStatusBar,
     QDialog, QSpinBox, QFormLayout, QListWidget, QListWidgetItem,
-    QTextEdit, QFrame, QSizePolicy, QFileDialog
+    QTextEdit, QFrame, QSizePolicy, QFileDialog, QToolButton, QTabBar
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize, QPoint
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QSize, QPoint, QObject, QEvent
 from PyQt6.QtGui import QIcon, QAction, QKeySequence, QFont
-from qframelesswindow import FramelessMainWindow
 import ctypes
 
 # ── Icon helper ───────────────────────────────────────────────────────────────
@@ -227,9 +226,339 @@ class RhodiumWebEnginePage(QWebEnginePage):
             return False
         return super().acceptNavigationRequest(url, nav_type, is_main_frame)
 
+class ResizeMoveFilter(QObject):
+    """Handles frameless-window resizing and dragging without stealing widget clicks."""
+
+    def __init__(self, window):
+        super().__init__(window)
+
+        self.win = window
+        self.margin = 8
+
+        self.is_resizing = False
+        self.is_moving = False
+
+        self.drag_start_pos = QPoint()
+        self.resize_edges = []
+
+    def eventFilter(self, obj, event):
+
+        # =========================================================
+        # MOUSE PRESS
+        # =========================================================
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
+
+            pos = event.globalPosition().toPoint()
+            win_rect = self.win.frameGeometry()
+
+            # -----------------------------------------------------
+            # RESIZE
+            # -----------------------------------------------------
+            edges = self._get_edges(pos, win_rect)
+
+            if edges:
+                self.resize_edges = edges
+                self.is_resizing = True
+                self.is_moving = False
+
+                return True
+
+            # -----------------------------------------------------
+            # WINDOW DRAG
+            # -----------------------------------------------------
+            if self._is_drag_area(obj, pos):
+
+                self.is_moving = True
+                self.is_resizing = False
+
+                self.drag_start_pos = (
+                    pos - win_rect.topLeft()
+                )
+
+                return True
+
+            # IMPORTANT:
+            # This click belongs to the widget.
+            return False
+
+        # =========================================================
+        # MOUSE MOVE
+        # =========================================================
+        elif event.type() == QEvent.Type.MouseMove:
+
+            pos = event.globalPosition().toPoint()
+            win_rect = self.win.frameGeometry()
+
+            # -----------------------------------------------------
+            # RESIZING
+            # -----------------------------------------------------
+            if self.is_resizing:
+
+                self._apply_resize(pos)
+
+                return True
+
+            # -----------------------------------------------------
+            # MOVING
+            # -----------------------------------------------------
+            if self.is_moving:
+
+                self.win.move(
+                    pos - self.drag_start_pos
+                )
+
+                return True
+
+            # -----------------------------------------------------
+            # CURSOR
+            # -----------------------------------------------------
+            edges = self._get_edges(
+                pos,
+                win_rect
+            )
+
+            self._update_cursor(edges)
+
+            # NEVER consume normal mouse movement
+            return False
+
+        # =========================================================
+        # MOUSE RELEASE
+        # =========================================================
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+
+            was_handled = (
+                self.is_resizing
+                or self.is_moving
+            )
+
+            self.is_resizing = False
+            self.is_moving = False
+            self.resize_edges = []
+
+            self.win.unsetCursor()
+
+            if was_handled:
+                return True
+
+            return False
+
+        return False
+
+    # =============================================================
+    # DETERMINE WHETHER THIS IS A WINDOW DRAG AREA
+    # =============================================================
+
+    def _is_drag_area(self, obj, global_pos):
+        """Return True only for empty browser chrome, not interactive widgets."""
+
+        # Convert mouse position to window-local coordinates
+        local_pos = self.win.mapFromGlobal(global_pos)
+
+        # Your toolbar + tabs occupy the top portion of the window.
+        # Allow dragging in the empty 8px border ABOVE them.
+        if local_pos.y() <= 8:
+            widget = QApplication.widgetAt(global_pos)
+
+            # If there is an actual widget there, let that widget handle it.
+            if widget is not None and widget != self.win:
+                return False
+
+            return True
+
+        # -------------------------------------------------------------
+        # Allow dragging from EMPTY space in the tab-bar area.
+        # -------------------------------------------------------------
+        tab_bar = self.win.tab_widget.tabBar()
+
+        if tab_bar is not None:
+            tab_pos = tab_bar.mapFromGlobal(global_pos)
+
+            if tab_bar.rect().contains(tab_pos):
+
+                widget = QApplication.widgetAt(global_pos)
+
+                # Clicking an actual tab/button must go to the widget.
+                if widget is not None:
+
+                    current = widget
+
+                    while current is not None:
+
+                        if current in (
+                            tab_bar,
+                            self.win.tab_widget,
+                        ):
+                            return False
+
+                        if current == self.win:
+                            break
+
+                        current = current.parentWidget()
+
+                # Empty tab-bar space can drag the window.
+                return True
+
+        return False
+    # =============================================================
+    # WINDOW EDGE DETECTION
+    # =============================================================
+
+    def _get_edges(self, global_pos, win_rect):
+
+        edges = []
+
+        x = global_pos.x()
+        y = global_pos.y()
+
+        # Left / Right
+        if (
+            win_rect.top()
+            <= y
+            <= win_rect.bottom()
+        ):
+
+            if abs(x - win_rect.left()) <= self.margin:
+                edges.append("left")
+
+            if abs(x - win_rect.right()) <= self.margin:
+                edges.append("right")
+
+        # Top / Bottom
+        if (
+            win_rect.left()
+            <= x
+            <= win_rect.right()
+        ):
+
+            if abs(y - win_rect.top()) <= self.margin:
+                edges.append("top")
+
+            if abs(y - win_rect.bottom()) <= self.margin:
+                edges.append("bottom")
+
+        return edges
+
+    # =============================================================
+    # RESIZE WINDOW
+    # =============================================================
+
+    def _apply_resize(self, global_pos):
+
+        geom = self.win.geometry()
+
+        minimum_width = self.win.minimumWidth()
+        minimum_height = self.win.minimumHeight()
+
+        # Right
+        if "right" in self.resize_edges:
+
+            new_width = (
+                global_pos.x()
+                - geom.left()
+            )
+
+            if new_width >= minimum_width:
+                geom.setRight(
+                    global_pos.x()
+                )
+
+        # Bottom
+        if "bottom" in self.resize_edges:
+
+            new_height = (
+                global_pos.y()
+                - geom.top()
+            )
+
+            if new_height >= minimum_height:
+                geom.setBottom(
+                    global_pos.y()
+                )
+
+        # Left
+        if "left" in self.resize_edges:
+
+            new_width = (
+                geom.right()
+                - global_pos.x()
+            )
+
+            if new_width >= minimum_width:
+                geom.setLeft(
+                    global_pos.x()
+                )
+
+        # Top
+        if "top" in self.resize_edges:
+
+            new_height = (
+                geom.bottom()
+                - global_pos.y()
+            )
+
+            if new_height >= minimum_height:
+                geom.setTop(
+                    global_pos.y()
+                )
+
+        self.win.setGeometry(geom)
+
+    # =============================================================
+    # RESIZE CURSOR
+    # =============================================================
+
+    def _update_cursor(self, edges):
+
+        if (
+            ("top" in edges and "left" in edges)
+            or
+            ("bottom" in edges and "right" in edges)
+        ):
+
+            self.win.setCursor(
+                Qt.CursorShape.SizeFDiagCursor
+            )
+
+        elif (
+            ("top" in edges and "right" in edges)
+            or
+            ("bottom" in edges and "left" in edges)
+        ):
+
+            self.win.setCursor(
+                Qt.CursorShape.SizeBDiagCursor
+            )
+
+        elif (
+            "left" in edges
+            or
+            "right" in edges
+        ):
+
+            self.win.setCursor(
+                Qt.CursorShape.SizeHorCursor
+            )
+
+        elif (
+            "top" in edges
+            or
+            "bottom" in edges
+        ):
+
+            self.win.setCursor(
+                Qt.CursorShape.SizeVerCursor
+            )
+
+        else:
+
+            self.win.unsetCursor()
 
 # ── Main Browser Window ───────────────────────────────────────────────────────
-class AdvancedBrowser(FramelessMainWindow):
+class AdvancedBrowser(QMainWindow):
     """RHODIUM – Advanced Browser"""
 
     def __init__(self):
@@ -238,9 +567,7 @@ class AdvancedBrowser(FramelessMainWindow):
         self.setWindowIcon(icon("home.png"))
         self.setGeometry(80, 80, 1280, 820)
 
-        # Title bar (frameless)
-        # self.titleBar.setStyleSheet("background-color: transparent;")
-        self._drag_pos = QPoint()
+        
 
 
         # Data paths
@@ -261,162 +588,335 @@ class AdvancedBrowser(FramelessMainWindow):
         self.apply_global_settings()
         self.setStyleSheet(self.get_stylesheet())
 
-    # ── UI Init ───────────────────────────────────────────────────────────────
-    def init_ui(self):
-        root = QWidget()
-        vbox = QVBoxLayout(root)
-        vbox.setContentsMargins(0, 0, 0, 0)
-        vbox.setSpacing(0)
-
-        # Navigation toolbar (no classic menubar above it)
-        self.toolbar = self.create_toolbar()
-        vbox.addWidget(self.toolbar)
-
-        # Tab widget
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setTabsClosable(True)
-        self.tab_widget.setDocumentMode(True)
-        self.tab_widget.tabCloseRequested.connect(self.close_tab)
-        self.tab_widget.currentChanged.connect(self.tab_changed)
-
-        new_tab_btn = QPushButton()
-        new_tab_btn.setIcon(icon("plus.png"))
-        new_tab_btn.setFixedSize(28, 28)
-        new_tab_btn.setFlat(True)
-        new_tab_btn.setToolTip("New Tab  (Ctrl+T)")
-        new_tab_btn.clicked.connect(lambda: self.add_new_tab())
-        self.tab_widget.setCornerWidget(new_tab_btn, Qt.Corner.TopRightCorner)
-
-        vbox.addWidget(self.tab_widget)
-
-        # Find bar (initially hidden)
-        self.find_bar = FindBar()
-        self.find_bar.hide()
-        self.find_bar.find_next_signal.connect(self.perform_find)
-        self.find_bar.close_signal.connect(self.find_bar.hide)
-        vbox.addWidget(self.find_bar)
-
-        # Status bar
-        self.status_bar   = QStatusBar()
-        self.status_label = QLabel("Ready")
-        self.status_label.setObjectName("StatusLabel")
-        self.status_bar.addWidget(self.status_label)
-        self.setStatusBar(self.status_bar)
-
-        self.setCentralWidget(root)
-
-        # Keyboard shortcuts (window-level)
-        self._add_shortcut("Ctrl+T",         lambda: self.add_new_tab())
-        self._add_shortcut("Ctrl+W",         lambda: self.close_tab(self.tab_widget.currentIndex()))
-        self._add_shortcut("Ctrl+L",         self.url_bar.setFocus)
-        self._add_shortcut("Ctrl+F",         self.open_find_dialog)
-        self._add_shortcut("Ctrl+D",         self.add_bookmark)
-        self._add_shortcut("Ctrl+J",         self.show_downloads)
-        self._add_shortcut("Ctrl+,",         self.open_settings)
-        self._add_shortcut("Ctrl+N",         self.open_new_window)
-        self._add_shortcut("Ctrl+Q",         self.close)
-        self._add_shortcut("F5",             self.reload_page)
-        self._add_shortcut("F11",            self.toggle_fullscreen)
-        self._add_shortcut("Ctrl++",         self.zoom_in)
-        self._add_shortcut("Ctrl+-",         self.zoom_out)
-        self._add_shortcut("Ctrl+0",         self.reset_zoom)
-        self._add_shortcut("Alt+Left",       self.go_back)
-        self._add_shortcut("Alt+Right",      self.go_forward)
-        self._add_shortcut("Ctrl+G",         lambda: self.perform_find(self.find_bar.search_input.text(), False))
-        self._add_shortcut("Ctrl+Shift+G",   lambda: self.perform_find(self.find_bar.search_input.text(), True))
-
-        # Open first tab
-        self.add_new_tab()
-
     def _add_shortcut(self, key: str, slot):
         act = QAction(self)
         act.setShortcut(QKeySequence(key))
         act.triggered.connect(slot)
         self.addAction(act)
+    # ── UI Init ───────────────────────────────────────────────────────────────
+    def init_ui(self):
 
-    # ── Toolbar ───────────────────────────────────────────────────────────────
+        
+        # ─────────────────────────────────────────────────────────────
+        # Frameless window
+        # ─────────────────────────────────────────────────────────────
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self._drag_pos = QPoint()
+
+        # ─────────────────────────────────────────────────────────────
+        # Central container
+        # ─────────────────────────────────────────────────────────────
+        central = QWidget()
+        central.setObjectName("BrowserRoot")
+
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(0)
+
+        root = QWidget()
+        root.setObjectName("BrowserSurface")
+
+        vbox = QVBoxLayout(root)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(0)
+
+        # ─────────────────────────────────────────────────────────────
+        # Navigation toolbar
+        # ─────────────────────────────────────────────────────────────
+        self.toolbar = self.create_toolbar()
+        vbox.addWidget(self.toolbar)
+
+        # ─────────────────────────────────────────────────────────────
+        # TAB SYSTEM
+        # ─────────────────────────────────────────────────────────────
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setObjectName("BrowserTabs")
+
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.setDocumentMode(True)
+
+        # Important browser-like behavior
+        self.tab_widget.setMovable(True)
+        self.tab_widget.setUsesScrollButtons(True)
+        self.tab_widget.setElideMode(Qt.TextElideMode.ElideRight)
+
+        # Give the tab bar a proper minimum height
+        self.tab_widget.tabBar().setMinimumHeight(38)
+        self.tab_widget.tabBar().setExpanding(False)
+
+        # Signals
+        self.tab_widget.tabCloseRequested.connect(self.close_tab)
+        self.tab_widget.currentChanged.connect(self.tab_changed)
+
+        # ─────────────────────────────────────────────────────────────
+        # NEW TAB BUTTON
+        # ─────────────────────────────────────────────────────────────
+        self.new_tab_button = QToolButton()
+        self.new_tab_button.setObjectName("NewTabButton")
+        self.new_tab_button.setIcon(icon("plus.png"))
+        self.new_tab_button.setIconSize(QSize(16, 16))
+        self.new_tab_button.setFixedSize(32, 32)
+        self.new_tab_button.setAutoRaise(True)
+        self.new_tab_button.setToolTip("New Tab  (Ctrl+T)")
+        self.new_tab_button.clicked.connect(lambda: self.add_new_tab())
+
+        # Put it directly after the tabs
+        self.tab_widget.setCornerWidget(
+            self.new_tab_button,
+            Qt.Corner.TopRightCorner
+        )
+
+        vbox.addWidget(self.tab_widget)
+
+        # ─────────────────────────────────────────────────────────────
+        # FIND BAR
+        # ─────────────────────────────────────────────────────────────
+        self.find_bar = FindBar()
+        self.find_bar.hide()
+
+        self.find_bar.find_next_signal.connect(self.perform_find)
+        self.find_bar.close_signal.connect(self.find_bar.hide)
+
+        vbox.addWidget(self.find_bar)
+
+        # ─────────────────────────────────────────────────────────────
+        # STATUS BAR
+        # ─────────────────────────────────────────────────────────────
+        self.status_bar = QStatusBar()
+
+        self.status_label = QLabel("Ready")
+        self.status_label.setObjectName("StatusLabel")
+
+        self.status_bar.addWidget(self.status_label)
+
+        self.setStatusBar(self.status_bar)
+
+        # ─────────────────────────────────────────────────────────────
+        # Root
+        # ─────────────────────────────────────────────────────────────
+        layout.addWidget(root)
+
+        self.setCentralWidget(central)
+
+        # ─────────────────────────────────────────────────────────────
+        # Keyboard shortcuts
+        # ─────────────────────────────────────────────────────────────
+        self._add_shortcut("Ctrl+T",       self.add_new_tab)
+        self._add_shortcut(
+            "Ctrl+W",
+            lambda: self.close_tab(self.tab_widget.currentIndex())
+        )
+        self._add_shortcut("Ctrl+L",       self.url_bar.setFocus)
+        self._add_shortcut("Ctrl+F",       self.open_find_dialog)
+        self._add_shortcut("Ctrl+D",       self.add_bookmark)
+        self._add_shortcut("Ctrl+J",       self.show_downloads)
+        self._add_shortcut("Ctrl+,",       self.open_settings)
+        self._add_shortcut("Ctrl+N",       self.open_new_window)
+        self._add_shortcut("Ctrl+Q",       self.close)
+        self._add_shortcut("F5",           self.reload_page)
+        self._add_shortcut("F11",          self.toggle_fullscreen)
+        self._add_shortcut("Ctrl++",       self.zoom_in)
+        self._add_shortcut("Ctrl+-",       self.zoom_out)
+        self._add_shortcut("Ctrl+0",       self.reset_zoom)
+        self._add_shortcut("Alt+Left",     self.go_back)
+        self._add_shortcut("Alt+Right",    self.go_forward)
+
+        self._add_shortcut(
+            "Ctrl+G",
+            lambda: self.perform_find(
+                self.find_bar.search_input.text(),
+                False
+            )
+        )
+
+        self._add_shortcut(
+            "Ctrl+Shift+G",
+            lambda: self.perform_find(
+                self.find_bar.search_input.text(),
+                True
+            )
+        )
+
+        # ─────────────────────────────────────────────────────────────
+        # First tab
+        # ─────────────────────────────────────────────────────────────
+        self.add_new_tab()
+
     def create_toolbar(self) -> QToolBar:
         bar = QToolBar("Navigation")
         bar.setObjectName("NavBar")
-        bar.setIconSize(QSize(18, 18))
+
+        bar.setIconSize(QSize(17, 17))
         bar.setMovable(False)
         bar.setFloatable(False)
 
-        def nav_btn(icon_name, tip, slot) -> QPushButton:
+        bar.setContentsMargins(4, 0, 4, 0)
+
+        def nav_btn(icon_name, tip, slot):
             b = QPushButton()
             b.setIcon(icon(icon_name))
+            b.setIconSize(QSize(17, 17))
             b.setToolTip(tip)
             b.setObjectName("NavBtn")
             b.setFixedSize(34, 34)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(slot)
             return b
 
-        self.btn_back    = nav_btn("back.png",    "Back  (Alt+←)",   self.go_back)
-        self.btn_forward = nav_btn("forward.png",  "Forward  (Alt+→)", self.go_forward)
-        self.btn_reload  = nav_btn("reload.png",   "Reload  (F5)",     self.reload_page)
-        self.btn_stop    = nav_btn("stop.png",     "Stop",             self.stop_loading)
-        self.btn_home    = nav_btn("home.png",     "Home",             self.go_home)
+        # ─────────────────────────────────────────────────────────────
+        # Navigation
+        # ─────────────────────────────────────────────────────────────
 
-        for b in (self.btn_back, self.btn_forward, self.btn_reload,
-                  self.btn_stop, self.btn_home):
-            bar.addWidget(b)
+        self.btn_back = nav_btn(
+            "back.png",
+            "Back  (Alt+←)",
+            self.go_back
+        )
+
+        self.btn_forward = nav_btn(
+            "forward.png",
+            "Forward  (Alt+→)",
+            self.go_forward
+        )
+
+        self.btn_reload = nav_btn(
+            "reload.png",
+            "Reload  (F5)",
+            self.reload_page
+        )
+
+        self.btn_stop = nav_btn(
+            "stop.png",
+            "Stop",
+            self.stop_loading
+        )
+
+        self.btn_home = nav_btn(
+            "home.png",
+            "Home",
+            self.go_home
+        )
+
+        for button in (
+            self.btn_back,
+            self.btn_forward,
+            self.btn_reload,
+            self.btn_stop,
+            self.btn_home,
+        ):
+            bar.addWidget(button)
 
         bar.addSeparator()
 
-        # URL bar (stretches to fill remaining space)
+        # ─────────────────────────────────────────────────────────────
+        # URL BAR
+        # ─────────────────────────────────────────────────────────────
+
         self.url_bar = QLineEdit()
         self.url_bar.setObjectName("UrlBar")
-        self.url_bar.setPlaceholderText("Search the web or type a URL…")
-        self.url_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.url_bar.setFixedHeight(34)
-        self.url_bar.returnPressed.connect(self.navigate_to_url)
+        self.url_bar.setPlaceholderText(
+            "Search or enter address"
+        )
+
+        self.url_bar.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed
+        )
+
+        self.url_bar.setFixedHeight(36)
+
+        self.url_bar.returnPressed.connect(
+            self.navigate_to_url
+        )
+
         bar.addWidget(self.url_bar)
 
         bar.addSeparator()
 
-        # Bookmark star
+        # ─────────────────────────────────────────────────────────────
+        # BOOKMARK
+        # ─────────────────────────────────────────────────────────────
+
         self.btn_bookmark = QPushButton()
-        self.btn_bookmark.setIcon(icon("bookmark-empty.png"))
-        self.btn_bookmark.setToolTip("Add Bookmark  (Ctrl+D)")
         self.btn_bookmark.setObjectName("NavBtn")
+        self.btn_bookmark.setIcon(icon("bookmark-empty.png"))
+        self.btn_bookmark.setIconSize(QSize(17, 17))
         self.btn_bookmark.setFixedSize(34, 34)
-        self.btn_bookmark.clicked.connect(self.add_bookmark)
+        self.btn_bookmark.setToolTip(
+            "Add Bookmark  (Ctrl+D)"
+        )
+        self.btn_bookmark.clicked.connect(
+            self.add_bookmark
+        )
+
         bar.addWidget(self.btn_bookmark)
 
-        # History dropdown
+        # ─────────────────────────────────────────────────────────────
+        # HISTORY
+        # ─────────────────────────────────────────────────────────────
+
         self.btn_history = QPushButton()
-        self.btn_history.setIcon(icon("history.png"))
-        self.btn_history.setToolTip("History")
         self.btn_history.setObjectName("NavBtn")
+        self.btn_history.setIcon(icon("history.png"))
+        self.btn_history.setIconSize(QSize(17, 17))
         self.btn_history.setFixedSize(34, 34)
-        self.btn_history.setMenu(self.create_history_menu())
+        self.btn_history.setToolTip("History")
+        self.btn_history.setMenu(
+            self.create_history_menu()
+        )
+
         bar.addWidget(self.btn_history)
 
-        # Downloads
+        # ─────────────────────────────────────────────────────────────
+        # DOWNLOADS
+        # ─────────────────────────────────────────────────────────────
+
         self.btn_download = QPushButton()
-        self.btn_download.setIcon(icon("download.png"))
-        self.btn_download.setToolTip("Downloads  (Ctrl+J)")
         self.btn_download.setObjectName("NavBtn")
+        self.btn_download.setIcon(icon("download.png"))
+        self.btn_download.setIconSize(QSize(17, 17))
         self.btn_download.setFixedSize(34, 34)
-        self.btn_download.clicked.connect(self.show_downloads)
+        self.btn_download.setToolTip(
+            "Downloads  (Ctrl+J)"
+        )
+        self.btn_download.clicked.connect(
+            self.show_downloads
+        )
+
         bar.addWidget(self.btn_download)
 
-        # Settings
+        # ─────────────────────────────────────────────────────────────
+        # SETTINGS
+        # ─────────────────────────────────────────────────────────────
+
         self.btn_settings = QPushButton()
-        self.btn_settings.setIcon(icon("settings.png"))
-        self.btn_settings.setToolTip("Settings  (Ctrl+,)")
         self.btn_settings.setObjectName("NavBtn")
+        self.btn_settings.setIcon(icon("settings.png"))
+        self.btn_settings.setIconSize(QSize(17, 17))
         self.btn_settings.setFixedSize(34, 34)
-        self.btn_settings.clicked.connect(self.open_settings)
+        self.btn_settings.setToolTip(
+            "Settings  (Ctrl+,)"
+        )
+        self.btn_settings.clicked.connect(
+            self.open_settings
+        )
+
         bar.addWidget(self.btn_settings)
 
-        # Hamburger menu (all remaining items)
+        # ─────────────────────────────────────────────────────────────
+        # MENU
+        # ─────────────────────────────────────────────────────────────
+
         self.btn_menu = QPushButton()
-        self.btn_menu.setIcon(icon("menu.png"))
-        self.btn_menu.setToolTip("Menu")
         self.btn_menu.setObjectName("NavBtn")
+        self.btn_menu.setIcon(icon("menu.png"))
+        self.btn_menu.setIconSize(QSize(17, 17))
         self.btn_menu.setFixedSize(34, 34)
-        self.btn_menu.setMenu(self.create_main_menu())
+        self.btn_menu.setToolTip("Menu")
+        self.btn_menu.setMenu(
+            self.create_main_menu()
+        )
+
         bar.addWidget(self.btn_menu)
 
         return bar
@@ -516,27 +1016,80 @@ class AdvancedBrowser(FramelessMainWindow):
     # ── Tab management ────────────────────────────────────────────────────────
     def add_new_tab(self, url=None):
         if url is None:
-            url = self.settings.get("home_page", "about:home")
+            url = self.settings.get(
+                "home_page",
+                "about:home"
+            )
 
         view = QWebEngineView()
-        page = RhodiumWebEnginePage(self, view)
+
+        page = RhodiumWebEnginePage(
+            self,
+            view
+        )
+
         view.setPage(page)
-        view.setZoomFactor(self.settings.get("default_zoom", 100) / 100.0)
 
-        view.loadStarted.connect(lambda: self.on_load_started(view))
-        view.loadProgress.connect(lambda p: self.on_load_progress(p, view))
-        view.loadFinished.connect(lambda ok: self.on_load_finished(ok, view))
-        view.titleChanged.connect(lambda t: self.on_title_changed(t, view))
-        view.urlChanged.connect(lambda u: self.on_url_changed(u, view))
-        page.profile().downloadRequested.connect(self.on_download_requested)
+        view.setZoomFactor(
+            self.settings.get(
+                "default_zoom",
+                100
+            ) / 100.0
+        )
 
-        idx = self.tab_widget.addTab(view, "New Tab")
+        # WebEngine signals
+        view.loadStarted.connect(
+            lambda: self.on_load_started(view)
+        )
+
+        view.loadProgress.connect(
+            lambda p: self.on_load_progress(p, view)
+        )
+
+        view.loadFinished.connect(
+            lambda ok: self.on_load_finished(ok, view)
+        )
+
+        view.titleChanged.connect(
+            lambda t: self.on_title_changed(t, view)
+        )
+
+        view.urlChanged.connect(
+            lambda u: self.on_url_changed(u, view)
+        )
+
+        page.profile().downloadRequested.connect(
+            self.on_download_requested
+        )
+
+        # Add tab
+        idx = self.tab_widget.addTab(
+            view,
+            "New Tab"
+        )
+
         self.tab_widget.setCurrentIndex(idx)
 
-        if url in ("about:home", "rhodium://home"):
-            view.setHtml(self.get_home_page_html(), QUrl("about:blank"))
+        # Browser-like tooltip
+        self.tab_widget.setTabToolTip(
+            idx,
+            "New Tab"
+        )
+
+        # Load page
+        if url in (
+            "about:home",
+            "rhodium://home"
+        ):
+            view.setHtml(
+                self.get_home_page_html(),
+                QUrl("about:blank")
+            )
         else:
-            self._load_in_view(url, view)
+            self._load_in_view(
+                url,
+                view
+            )
 
         return view
 
@@ -549,12 +1102,21 @@ class AdvancedBrowser(FramelessMainWindow):
             self.close()
 
     def tab_changed(self, index):
+        if index < 0:
+            return
+
         view = self.tab_widget.widget(index)
+
         if isinstance(view, QWebEngineView):
             url = view.url().toString()
-            self.url_bar.setText("rhodium://home" if url in ("about:blank", "") else url)
-            self._update_bookmark_icon(url)
 
+            self.url_bar.setText(
+                "rhodium://home"
+                if url in ("about:blank", "")
+                else url
+            )
+
+            self._update_bookmark_icon(url)
     # ── Navigation ────────────────────────────────────────────────────────────
     def _load_in_view(self, url_string: str, view: QWebEngineView):
         if not url_string.startswith(("http://", "https://", "file://", "about:")):
@@ -859,38 +1421,103 @@ class AdvancedBrowser(FramelessMainWindow):
 
     # ── Web Engine Signals ────────────────────────────────────────────────────
     def on_load_started(self, view):
-        if self.get_current_view() == view:
-            self.status_label.setText("Loading…")
-            idx = self.tab_widget.indexOf(view)
-            if idx >= 0:
-                self.tab_widget.setTabText(idx, "Loading…")
+        if self.get_current_view() != view:
+            return
+
+        self.status_label.setText("Loading…")
+
+        idx = self.tab_widget.indexOf(view)
+
+        if idx >= 0:
+            self.tab_widget.setTabText(
+                idx,
+                "Loading…"
+            )
+
+            self.tab_widget.setTabToolTip(
+                idx,
+                "Loading…"
+            )
 
     def on_load_progress(self, progress, view):
         if self.get_current_view() == view:
             self.status_label.setText(f"Loading… {progress}%")
 
     def on_load_finished(self, ok, view):
-        url   = view.url().toString()
+        url = view.url().toString()
         title = view.title() or url
 
         idx = self.tab_widget.indexOf(view)
+
         if idx >= 0:
-            short = title[:26] + "…" if len(title) > 26 else title
-            self.tab_widget.setTabText(idx, short)
+            short = (
+                title[:28] + "…"
+                if len(title) > 28
+                else title
+            )
+
+            if not short:
+                short = "New Tab"
+
+            self.tab_widget.setTabText(
+                idx,
+                short
+            )
+
+            self.tab_widget.setTabToolTip(
+                idx,
+                title
+            )
 
         if self.get_current_view() == view:
-            self.status_label.setText("Done" if ok else "Failed to load page")
-            self.url_bar.setText("rhodium://home" if url in ("about:blank", "") else url)
+            self.status_label.setText(
+                "Done" if ok else "Failed to load page"
+            )
+
+            self.url_bar.setText(
+                "rhodium://home"
+                if url in ("about:blank", "")
+                else url
+            )
+
             self._update_bookmark_icon(url)
 
-        if ok and url not in ("about:blank", ""):
-            self.add_to_history(url, title)
+        if ok and url not in (
+            "about:blank",
+            ""
+        ):
+            self.add_to_history(
+                url,
+                title
+            )
 
     def on_title_changed(self, title, view):
         idx = self.tab_widget.indexOf(view)
-        if idx >= 0:
-            short = title[:26] + "…" if len(title) > 26 else title
-            self.tab_widget.setTabText(idx, short)
+
+        if idx < 0:
+            return
+
+        title = title.strip()
+
+        if not title:
+            title = "New Tab"
+
+        # Keep tab text compact
+        short = (
+            title[:28] + "…"
+            if len(title) > 28
+            else title
+        )
+
+        self.tab_widget.setTabText(
+            idx,
+            short
+        )
+
+        self.tab_widget.setTabToolTip(
+            idx,
+            title
+        )
 
     def on_url_changed(self, url, view):
         url_str = url.toString()
@@ -938,34 +1565,45 @@ class AdvancedBrowser(FramelessMainWindow):
         dlg.exec()
 
     # -- Window movement handlers (frameless) ------------------------------------------------------
-    def mousePressEvent(self, event):
-        # Trigger drag only on Left Mouse Click
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Store the difference between global mouse position and window top-left corner
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+    # def mousePressEvent(self, event):
+    #     # Trigger drag only on Left Mouse Click
+    #     if event.button() == Qt.MouseButton.LeftButton:
+    #         # Store the difference between global mouse position and window top-left corner
+    #         self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+    #         event.accept()
 
-    def mouseMoveEvent(self, event):
-        # Move window if left button is being held down while dragging
-        if event.buttons() == Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
-            event.accept()
+    # def mouseMoveEvent(self, event):
+    #     # Move window if left button is being held down while dragging
+    #     if event.buttons() == Qt.MouseButton.LeftButton:
+    #         self.move(event.globalPosition().toPoint() - self._drag_pos)
+    #         event.accept()
+
+    
 
     # ── Stylesheet ────────────────────────────────────────────────────────────
     def get_stylesheet(self) -> str:
         return """
         /* =========================================================
-       RHODIUM BROWSER — PROFESSIONAL DARK UI
-       ========================================================= */
+        RHODIUM — PROFESSIONAL DARK BROWSER UI
+        ========================================================= */
 
         * {
             font-family: "Segoe UI", "Inter", Arial, sans-serif;
         }
 
         QMainWindow {
-            background: #0b0c0f;
-            color: #e7e9ed;
+            background: #0b0d10;
+            color: #e8eaed;
         }
+
+        QWidget#BrowserRoot {
+            background: #0b0d10;
+        }
+
+        QWidget#BrowserSurface {
+            background: #0b0d10;
+        }
+
 
         /* =========================================================
         NAVIGATION BAR
@@ -973,12 +1611,18 @@ class AdvancedBrowser(FramelessMainWindow):
 
         QToolBar#NavBar {
             background: #111318;
+
             border: none;
-            border-bottom: 1px solid #20232a;
-            padding: 5px 8px;
-            spacing: 3px;
-            min-height: 42px;
+            border-bottom: 1px solid #20242b;
+
+            padding: 5px 7px;
+
+            spacing: 2px;
+
+            min-height: 46px;
+            max-height: 46px;
         }
+
 
         /* =========================================================
         NAVIGATION BUTTONS
@@ -986,103 +1630,238 @@ class AdvancedBrowser(FramelessMainWindow):
 
         QPushButton#NavBtn {
             background: transparent;
-            color: #aeb3bc;
+
             border: none;
-            border-radius: 7px;
+            border-radius: 8px;
+
+            color: #9da4af;
+
             padding: 6px;
-            min-width: 30px;
-            min-height: 30px;
+
+            min-width: 34px;
+            min-height: 34px;
+            max-width: 34px;
+            max-height: 34px;
         }
 
         QPushButton#NavBtn:hover {
-            background: #1b1e24;
-            color: #f1f3f5;
+            background: #1c2027;
+            color: #e7eaf0;
         }
 
         QPushButton#NavBtn:pressed {
-            background: #242831;
+            background: #272c34;
             color: #ffffff;
         }
 
         QPushButton#NavBtn:disabled {
-            color: #4d525c;
+            color: #4c525c;
         }
+
 
         /* =========================================================
         URL BAR
         ========================================================= */
 
         QLineEdit#UrlBar {
-            background: #181b21;
-            color: #e8eaed;
+            background: #191c21;
 
-            border: 1px solid #292d35;
-            border-radius: 8px;
+            color: #e7e9ed;
+
+            border: 1px solid #292e36;
+            border-radius: 9px;
 
             padding: 7px 14px;
 
             font-size: 13px;
-            selection-background-color: #315fa8;
+
+            selection-background-color: #355f98;
             selection-color: #ffffff;
         }
 
         QLineEdit#UrlBar:hover {
-            background: #1b1e24;
-            border-color: #343944;
+            background: #1c2026;
+            border-color: #353b45;
         }
 
         QLineEdit#UrlBar:focus {
-            background: #191c22;
-            border: 1px solid #426cae;
+            background: #1b1f25;
+
+            border: 1px solid #456b9f;
+
+            selection-background-color: #365f98;
         }
+
 
         /* =========================================================
-        TABS
+        BROWSER TABS
         ========================================================= */
 
-        QTabWidget::pane {
+        QTabWidget#BrowserTabs {
+            background: #0b0d10;
             border: none;
-            background: #0b0c0f;
         }
+
+        QTabWidget#BrowserTabs::pane {
+            border: none;
+            background: #0b0d10;
+        }
+
+        QTabWidget#BrowserTabs::tab-bar {
+            alignment: left;
+        }
+
+
+        /* TAB BAR */
 
         QTabBar {
             background: #111318;
+
+            qproperty-drawBase: 0;
+
+            border: none;
+
+            min-height: 38px;
+            max-height: 38px;
         }
+
+
+        /* INDIVIDUAL TAB */
 
         QTabBar::tab {
             background: #111318;
-            color: #777d87;
+
+            color: #858c97;
 
             border: none;
-            border-bottom: 2px solid transparent;
+            border-top-left-radius: 9px;
+            border-top-right-radius: 9px;
 
-            padding: 8px 14px;
-            min-width: 120px;
+            padding: 0px 12px;
+
+            margin-top: 4px;
+            margin-right: 2px;
+
+            min-width: 150px;
+            max-width: 220px;
+
+            min-height: 34px;
+            max-height: 34px;
 
             font-size: 12px;
         }
 
-        QTabBar::tab:selected {
-            background: #0b0c0f;
-            color: #e9ebef;
-            border-bottom: 2px solid #4b78bd;
+
+        /* HOVERED TAB */
+
+        QTabBar::tab:hover {
+            background: #191d23;
+            color: #cbd0d8;
         }
 
-        QTabBar::tab:hover:!selected {
-            background: #181b20;
-            color: #bfc4cc;
+
+        /* ACTIVE TAB */
+
+        QTabBar::tab:selected {
+            background: #0b0d10;
+
+            color: #f1f3f6;
+
+            border-top: 1px solid #2d3540;
+            border-left: 1px solid #252b33;
+            border-right: 1px solid #252b33;
+
+            margin-top: 2px;
+
+            min-height: 36px;
+            max-height: 36px;
         }
+
+
+        /* Active tab bottom accent */
+
+        QTabBar::tab:selected {
+            border-bottom: 2px solid #4c78b5;
+        }
+
+
+        /* =========================================================
+        TAB CLOSE BUTTON
+        ========================================================= */
 
         QTabBar::close-button {
             image: url(style/icons/close (2).png);
+
+            width: 18px;
+            height: 18px;
+
             subcontrol-position: right;
-            margin-right: 3px;
+
+            margin-left: 5px;
+            margin-right: 1px;
+
+            border-radius: 5px;
         }
 
         QTabBar::close-button:hover {
-            background: #272b32;
-            border-radius: 4px;
+            background: #2a2f37;
         }
+
+        QTabBar::close-button:pressed {
+            background: #353b44;
+        }
+
+
+        /* =========================================================
+        NEW TAB BUTTON
+        ========================================================= */
+
+        QToolButton#NewTabButton {
+            background: transparent;
+
+            border: none;
+            border-radius: 8px;
+
+            padding: 6px;
+
+            margin-left: 4px;
+            margin-top: 3px;
+
+            color: #8e96a2;
+        }
+
+        QToolButton#NewTabButton:hover {
+            background: #1d2128;
+            color: #e7eaf0;
+        }
+
+        QToolButton#NewTabButton:pressed {
+            background: #282d35;
+        }
+
+
+        /* =========================================================
+        TAB SCROLL BUTTONS
+        ========================================================= */
+
+        QTabBar QToolButton {
+            background: #15181d;
+
+            border: none;
+            border-radius: 6px;
+
+            color: #9da4ae;
+
+            margin: 5px 3px;
+
+            padding: 4px;
+        }
+
+        QTabBar QToolButton:hover {
+            background: #242930;
+            color: #ffffff;
+        }
+
 
         /* =========================================================
         STATUS BAR
@@ -1090,52 +1869,73 @@ class AdvancedBrowser(FramelessMainWindow):
 
         QStatusBar {
             background: #111318;
-            border-top: 1px solid #20232a;
-            color: #686e78;
+
+            border-top: 1px solid #20242b;
+
+            color: #707782;
+
+            min-height: 22px;
+            max-height: 22px;
         }
 
         QLabel#StatusLabel {
-            color: #6d737d;
+            color: #737a85;
+
             font-size: 11px;
-            padding: 0 8px;
+
+            padding-left: 8px;
+            padding-right: 8px;
         }
+
 
         /* =========================================================
         MENUS
         ========================================================= */
 
         QMenu {
-            background: #17191e;
-            color: #e1e4e8;
+            background: #181b20;
 
-            border: 1px solid #2b2f36;
-            border-radius: 8px;
+            color: #e3e6eb;
+
+            border: 1px solid #30353d;
+            border-radius: 9px;
 
             padding: 5px;
+
+            font-size: 12px;
         }
 
         QMenu::item {
-            padding: 7px 30px 7px 12px;
-            border-radius: 5px;
+            padding: 8px 32px 8px 12px;
+
+            border-radius: 6px;
+
             margin: 1px;
         }
 
         QMenu::item:selected {
-            background: #252a32;
+            background: #272c34;
             color: #ffffff;
         }
 
         QMenu::separator {
             height: 1px;
-            background: #292d34;
+
+            background: #2b3037;
+
             margin: 5px 8px;
         }
 
         QMenu::section {
-            color: #686e78;
+            color: #747b86;
+
             font-size: 10px;
-            padding: 5px 12px 3px;
+
+            padding: 6px 12px 4px;
+
+            font-weight: 600;
         }
+
 
         /* =========================================================
         DIALOGS
@@ -1152,15 +1952,24 @@ class AdvancedBrowser(FramelessMainWindow):
 
         QLabel#SettingsTitle {
             color: #f2f4f7;
+
             font-size: 18px;
+
             font-weight: 600;
         }
 
+
+        /* =========================================================
+        GENERAL INPUTS
+        ========================================================= */
+
         QLineEdit {
             background: #181b21;
+
             color: #e1e4e8;
 
             border: 1px solid #2b2f36;
+
             border-radius: 7px;
 
             padding: 7px 10px;
@@ -1174,20 +1983,30 @@ class AdvancedBrowser(FramelessMainWindow):
             border-color: #426cae;
         }
 
+
+        /* =========================================================
+        GENERAL BUTTONS
+        ========================================================= */
+
         QPushButton {
             background: #1b1e24;
+
             color: #c6cad1;
 
             border: 1px solid #2b2f36;
+
             border-radius: 7px;
 
             padding: 7px 14px;
+
             font-size: 12px;
         }
 
         QPushButton:hover {
             background: #252930;
+
             color: #ffffff;
+
             border-color: #383d46;
         }
 
@@ -1197,7 +2016,9 @@ class AdvancedBrowser(FramelessMainWindow):
 
         QPushButton#PrimaryBtn {
             background: #315f9d;
+
             color: #ffffff;
+
             border: none;
         }
 
@@ -1205,12 +2026,14 @@ class AdvancedBrowser(FramelessMainWindow):
             background: #3b6fae;
         }
 
+
         /* =========================================================
         CHECKBOX
         ========================================================= */
 
         QCheckBox {
             color: #bfc4cc;
+
             spacing: 6px;
         }
 
@@ -1219,25 +2042,31 @@ class AdvancedBrowser(FramelessMainWindow):
             height: 15px;
 
             border-radius: 4px;
+
             border: 1px solid #3a3f48;
+
             background: #181b21;
         }
 
         QCheckBox::indicator:checked {
             background: #426cae;
+
             border-color: #426cae;
         }
 
+
         /* =========================================================
-        INPUTS
+        COMBO / SPIN
         ========================================================= */
 
         QSpinBox,
         QComboBox {
             background: #181b21;
+
             color: #e1e4e8;
 
             border: 1px solid #2b2f36;
+
             border-radius: 7px;
 
             padding: 6px 8px;
@@ -1248,28 +2077,48 @@ class AdvancedBrowser(FramelessMainWindow):
             border-color: #426cae;
         }
 
+
+        /* =========================================================
+        LIST
+        ========================================================= */
+
         QListWidget {
             background: #181b21;
+
             color: #d0d4da;
 
             border: 1px solid #2b2f36;
+
             border-radius: 7px;
 
             padding: 4px;
         }
 
-        QListWidget::item:selected {
-            background: #292f38;
+        QListWidget::item {
+            padding: 6px;
+
             border-radius: 5px;
         }
 
+        QListWidget::item:selected {
+            background: #292f38;
+        }
+
+
+        /* =========================================================
+        TEXT EDIT
+        ========================================================= */
+
         QTextEdit {
             background: #181b21;
+
             color: #d0d4da;
 
             border: 1px solid #2b2f36;
+
             border-radius: 7px;
         }
+
 
         /* =========================================================
         FIND BAR
@@ -1277,650 +2126,655 @@ class AdvancedBrowser(FramelessMainWindow):
 
         QFrame#FindBar {
             background: #15171c;
+
             border-top: 1px solid #292d34;
+
             max-height: 44px;
         }
 
         QLineEdit#FindInput {
             background: #1b1e24;
+
             border-radius: 7px;
+
             padding: 5px 10px;
+
             max-width: 320px;
         }
 
         QPushButton#FindClose {
             background: transparent;
+
             border: none;
+
             border-radius: 5px;
         }
 
         QPushButton#FindClose:hover {
             background: #252930;
         }
-        
         """
-
     # ── Home Page HTML ────────────────────────────────────────────────────────
     def get_home_page_html(self) -> str:
         return """<!DOCTYPE html>
-    <html lang="en">
-    <head>
-    <meta charset="UTF-8">
-    <title>Rhodium</title>
-
-    <style>
-
-    * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-    }
-
-    html,
-    body {
-        width: 100%;
-        height: 100%;
-    }
-
-    body {
-        background:
-            radial-gradient(
-                circle at 50% 38%,
-                rgba(55, 77, 110, 0.10) 0%,
-                rgba(15, 17, 21, 0.04) 28%,
-                transparent 52%
-            ),
-            #0b0c0f;
+        <html lang="en">
+        <head>
+        <meta charset="UTF-8">
+        <title>Rhodium</title>
+
+        <style>
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            background:
+                radial-gradient(
+                    circle at 50% 38%,
+                    rgba(55, 77, 110, 0.10) 0%,
+                    rgba(15, 17, 21, 0.04) 28%,
+                    transparent 52%
+                ),
+                #0b0c0f;
 
-        color: #e7e9ed;
-
-        font-family:
-            "Segoe UI",
-            Inter,
-            -apple-system,
-            BlinkMacSystemFont,
-            sans-serif;
-
-        display: flex;
-        justify-content: center;
-        align-items: center;
-
-        height: 100vh;
-
-        overflow: hidden;
-        user-select: none;
-    }
-
-    /* =========================================================
-    MAIN
-    ========================================================= */
-
-    .container {
-        width: 680px;
-        max-width: calc(100vw - 60px);
+            color: #e7e9ed;
+
+            font-family:
+                "Segoe UI",
+                Inter,
+                -apple-system,
+                BlinkMacSystemFont,
+                sans-serif;
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            height: 100vh;
+
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* =========================================================
+        MAIN
+        ========================================================= */
+
+        .container {
+            width: 680px;
+            max-width: calc(100vw - 60px);
 
-        display: flex;
-        flex-direction: column;
-        align-items: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
 
-        transform: translateY(-28px);
-    }
-
-    /* =========================================================
-    BRAND
-    ========================================================= */
+            transform: translateY(-28px);
+        }
+
+        /* =========================================================
+        BRAND
+        ========================================================= */
 
-    .brand {
-        display: flex;
-        align-items: center;
-        gap: 11px;
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 11px;
 
-        margin-bottom: 34px;
+            margin-bottom: 34px;
 
-        color: #e9ebef;
+            color: #e9ebef;
 
-        font-size: 25px;
-        font-weight: 600;
-        letter-spacing: -0.7px;
-    }
+            font-size: 25px;
+            font-weight: 600;
+            letter-spacing: -0.7px;
+        }
 
-    .brand-mark {
-        width: 38px;
-        height: 38px;
+        .brand-mark {
+            width: 38px;
+            height: 38px;
 
-        display: flex;
-        align-items: center;
-        justify-content: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
 
-        border-radius: 10px;
+            border-radius: 10px;
 
-        background: linear-gradient(
-            145deg,
-            #26384f,
-            #172131
-        );
+            background: linear-gradient(
+                145deg,
+                #26384f,
+                #172131
+            );
 
-        border: 1px solid #35485f;
+            border: 1px solid #35485f;
 
-        box-shadow:
-            0 8px 25px rgba(0,0,0,.25);
-    }
+            box-shadow:
+                0 8px 25px rgba(0,0,0,.25);
+        }
 
-    .brand-mark svg {
-        width: 21px;
-        height: 21px;
+        .brand-mark svg {
+            width: 21px;
+            height: 21px;
 
-        stroke: #9cb7d8;
-    }
+            stroke: #9cb7d8;
+        }
 
-    /* =========================================================
-    SEARCH
-    ========================================================= */
+        /* =========================================================
+        SEARCH
+        ========================================================= */
 
-    .search {
-        width: 100%;
-        height: 50px;
+        .search {
+            width: 100%;
+            height: 50px;
 
-        display: flex;
-        align-items: center;
+            display: flex;
+            align-items: center;
 
-        background: #15171b;
+            background: #15171b;
 
-        border: 1px solid #2b2f36;
-        border-radius: 10px;
+            border: 1px solid #2b2f36;
+            border-radius: 10px;
 
-        transition:
-            border-color .18s ease,
-            background .18s ease,
-            box-shadow .18s ease;
-    }
+            transition:
+                border-color .18s ease,
+                background .18s ease,
+                box-shadow .18s ease;
+        }
 
-    .search:hover {
-        background: #171a1f;
-        border-color: #363b44;
-    }
+        .search:hover {
+            background: #171a1f;
+            border-color: #363b44;
+        }
 
-    .search:focus-within {
-        background: #171a1f;
-        border-color: #466b9f;
+        .search:focus-within {
+            background: #171a1f;
+            border-color: #466b9f;
 
-        box-shadow:
-            0 0 0 3px rgba(70,107,159,.10);
-    }
+            box-shadow:
+                0 0 0 3px rgba(70,107,159,.10);
+        }
 
-    .search-icon {
-        width: 20px;
-        height: 20px;
+        .search-icon {
+            width: 20px;
+            height: 20px;
 
-        margin-left: 17px;
-        margin-right: 12px;
+            margin-left: 17px;
+            margin-right: 12px;
 
-        color: #777e89;
-    }
+            color: #777e89;
+        }
 
-    .search input {
-        width: 100%;
-        height: 100%;
+        .search input {
+            width: 100%;
+            height: 100%;
 
-        background: transparent;
-        border: none;
-        outline: none;
+            background: transparent;
+            border: none;
+            outline: none;
 
-        color: #e9ebef;
+            color: #e9ebef;
 
-        font-size: 14px;
-    }
+            font-size: 14px;
+        }
 
-    .search input::placeholder {
-        color: #777d87;
-    }
+        .search input::placeholder {
+            color: #777d87;
+        }
 
-    /* =========================================================
-    SHORTCUTS
-    ========================================================= */
+        /* =========================================================
+        SHORTCUTS
+        ========================================================= */
 
-    .shortcuts {
-        width: 100%;
+        .shortcuts {
+            width: 100%;
 
-        display: flex;
-        justify-content: center;
+            display: flex;
+            justify-content: center;
 
-        gap: 8px;
+            gap: 8px;
 
-        margin-top: 28px;
-    }
+            margin-top: 28px;
+        }
 
-    .shortcut {
-        width: 76px;
+        .shortcut {
+            width: 76px;
 
-        display: flex;
-        flex-direction: column;
-        align-items: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
 
-        gap: 8px;
+            gap: 8px;
 
-        color: #777d87;
+            color: #777d87;
 
-        font-size: 11px;
+            font-size: 11px;
 
-        text-decoration: none;
+            text-decoration: none;
 
-        cursor: pointer;
-    }
+            cursor: pointer;
+        }
 
-    .shortcut-button {
-        width: 42px;
-        height: 42px;
+        .shortcut-button {
+            width: 42px;
+            height: 42px;
 
-        display: flex;
-        align-items: center;
-        justify-content: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
 
-        background: #15171b;
+            background: #15171b;
 
-        border: 1px solid #282c33;
-        border-radius: 9px;
+            border: 1px solid #282c33;
+            border-radius: 9px;
 
-        transition:
-            background .15s ease,
-            border-color .15s ease,
-            transform .15s ease;
-    }
+            transition:
+                background .15s ease,
+                border-color .15s ease,
+                transform .15s ease;
+        }
 
-    .shortcut-button svg {
-        width: 18px;
-        height: 18px;
+        .shortcut-button svg {
+            width: 18px;
+            height: 18px;
 
-        stroke: #8e96a1;
-    }
+            stroke: #8e96a1;
+        }
 
-    .shortcut:hover {
-        color: #cdd1d7;
-    }
+        .shortcut:hover {
+            color: #cdd1d7;
+        }
 
-    .shortcut:hover .shortcut-button {
-        background: #1b1e23;
-        border-color: #3a4049;
+        .shortcut:hover .shortcut-button {
+            background: #1b1e23;
+            border-color: #3a4049;
 
-        transform: translateY(-2px);
-    }
+            transform: translateY(-2px);
+        }
 
-    .shortcut:hover svg {
-        stroke: #c5ccd5;
-    }
+        .shortcut:hover svg {
+            stroke: #c5ccd5;
+        }
 
-    /* ADD BUTTON */
+        /* ADD BUTTON */
 
-    .shortcut.add .shortcut-button {
-        border-style: dashed;
-    }
+        .shortcut.add .shortcut-button {
+            border-style: dashed;
+        }
 
-    .shortcut.add svg {
-        stroke: #666d77;
-    }
+        .shortcut.add svg {
+            stroke: #666d77;
+        }
 
-    /* =========================================================
-    FOOTER
-    ========================================================= */
+        /* =========================================================
+        FOOTER
+        ========================================================= */
 
-    .footer {
-        margin-top: 34px;
+        .footer {
+            margin-top: 34px;
 
-        color: #4f555e;
+            color: #4f555e;
 
-        font-size: 10px;
-        letter-spacing: .2px;
-    }
+            font-size: 10px;
+            letter-spacing: .2px;
+        }
 
-    </style>
-    </head>
+        </style>
+        </head>
 
-    <body>
+        <body>
 
-    <div class="container">
+        <div class="container">
 
-        <!-- BRAND -->
+            <!-- BRAND -->
 
-        <div class="brand">
+            <div class="brand">
 
-            <div class="brand-mark">
+                <div class="brand-mark">
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round">
+
+                        <circle cx="12" cy="12" r="8.5"/>
+                        <path d="M3.8 12h16.4"/>
+                        <path d="M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5S14.4 18.2 12 20.5"/>
+                        <path d="M12 3.5C9.6 5.8 8.4 8.6 8.4 12s1.2 6.2 3.6 8.5"/>
+
+                    </svg>
+
+                </div>
+
+                <span>Rhodium</span>
+
+            </div>
+
+
+            <!-- SEARCH -->
+
+            <div class="search">
 
                 <svg
+                    class="search-icon"
                     viewBox="0 0 24 24"
                     fill="none"
+                    stroke="currentColor"
                     stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round">
+                    stroke-linecap="round">
 
-                    <circle cx="12" cy="12" r="8.5"/>
-                    <path d="M3.8 12h16.4"/>
-                    <path d="M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5S14.4 18.2 12 20.5"/>
-                    <path d="M12 3.5C9.6 5.8 8.4 8.6 8.4 12s1.2 6.2 3.6 8.5"/>
+                    <circle cx="11" cy="11" r="6.5"/>
+                    <path d="m16 16 4 4"/>
 
                 </svg>
 
-            </div>
-
-            <span>Rhodium</span>
-
-        </div>
-
-
-        <!-- SEARCH -->
-
-        <div class="search">
-
-            <svg
-                class="search-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round">
-
-                <circle cx="11" cy="11" r="6.5"/>
-                <path d="m16 16 4 4"/>
-
-            </svg>
-
-            <input
-                id="q"
-                type="text"
-                placeholder="Search or enter address"
-                autocomplete="off"
-                autofocus
-            >
-
-        </div>
-
-
-        <!-- SHORTCUTS -->
-
-        <div class="shortcuts">
-
-            <!-- Mail -->
-
-            <div
-                class="shortcut"
-                onclick="nav('https://mail.google.com')">
-
-                <div class="shortcut-button">
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linecap="round"
-                        stroke-linejoin="round">
-
-                        <rect x="3" y="5" width="18" height="14" rx="2"/>
-                        <path d="m4 7 8 6 8-6"/>
-
-                    </svg>
-
-                </div>
-
-                <span>Mail</span>
+                <input
+                    id="q"
+                    type="text"
+                    placeholder="Search or enter address"
+                    autocomplete="off"
+                    autofocus
+                >
 
             </div>
 
 
-            <!-- Video -->
+            <!-- SHORTCUTS -->
 
-            <div
-                class="shortcut"
-                onclick="nav('https://youtube.com')">
+            <div class="shortcuts">
 
-                <div class="shortcut-button">
+                <!-- Mail -->
 
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linecap="round"
-                        stroke-linejoin="round">
+                <div
+                    class="shortcut"
+                    onclick="nav('https://mail.google.com')">
 
-                        <rect x="3" y="5" width="18" height="14" rx="3"/>
-                        <path d="m10 9 5 3-5 3z"/>
+                    <div class="shortcut-button">
 
-                    </svg>
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round">
+
+                            <rect x="3" y="5" width="18" height="14" rx="2"/>
+                            <path d="m4 7 8 6 8-6"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span>Mail</span>
 
                 </div>
 
-                <span>Video</span>
+
+                <!-- Video -->
+
+                <div
+                    class="shortcut"
+                    onclick="nav('https://youtube.com')">
+
+                    <div class="shortcut-button">
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round">
+
+                            <rect x="3" y="5" width="18" height="14" rx="3"/>
+                            <path d="m10 9 5 3-5 3z"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span>Video</span>
+
+                </div>
+
+
+                <!-- Developer -->
+
+                <div
+                    class="shortcut"
+                    onclick="nav('https://github.com')">
+
+                    <div class="shortcut-button">
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round">
+
+                            <path d="m8 8-4 4 4 4"/>
+                            <path d="m16 8 4 4-4 4"/>
+                            <path d="m14 5-4 14"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span>Developer</span>
+
+                </div>
+
+
+                <!-- News -->
+
+                <div
+                    class="shortcut"
+                    onclick="nav('https://news.google.com')">
+
+                    <div class="shortcut-button">
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round">
+
+                            <rect x="4" y="4" width="16" height="16" rx="2"/>
+                            <path d="M8 8h8"/>
+                            <path d="M8 12h8"/>
+                            <path d="M8 16h5"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span>News</span>
+
+                </div>
+
+
+                <!-- Social -->
+
+                <div
+                    class="shortcut"
+                    onclick="nav('https://twitter.com')">
+
+                    <div class="shortcut-button">
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round">
+
+                            <path d="M5 6h14v9a3 3 0 0 1-3 3H8l-3 3v-15z"/>
+                            <path d="M8 10h8"/>
+                            <path d="M8 13h5"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span>Social</span>
+
+                </div>
+
+
+                <!-- Shopping -->
+
+                <div
+                    class="shortcut"
+                    onclick="nav('https://amazon.com')">
+
+                    <div class="shortcut-button">
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round">
+
+                            <path d="M4 5h2l2 11h10l2-8H7"/>
+                            <circle cx="10" cy="20" r="1"/>
+                            <circle cx="18" cy="20" r="1"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span>Shopping</span>
+
+                </div>
+
+
+                <!-- Design -->
+
+                <div
+                    class="shortcut"
+                    onclick="nav('https://figma.com')">
+
+                    <div class="shortcut-button">
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round">
+
+                            <circle cx="9" cy="6" r="3"/>
+                            <circle cx="15" cy="6" r="3"/>
+                            <circle cx="9" cy="12" r="3"/>
+                            <circle cx="15" cy="12" r="3"/>
+                            <path d="M9 15v3a3 3 0 1 0 3-3v-3"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span>Design</span>
+
+                </div>
+
+
+                <!-- Add -->
+
+                <div
+                    class="shortcut add"
+                    onclick="addLink()">
+
+                    <div class="shortcut-button">
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round">
+
+                            <path d="M12 5v14"/>
+                            <path d="M5 12h14"/>
+
+                        </svg>
+
+                    </div>
+
+                    <span>Add</span>
+
+                </div>
 
             </div>
 
 
-            <!-- Developer -->
-
-            <div
-                class="shortcut"
-                onclick="nav('https://github.com')">
-
-                <div class="shortcut-button">
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linecap="round"
-                        stroke-linejoin="round">
-
-                        <path d="m8 8-4 4 4 4"/>
-                        <path d="m16 8 4 4-4 4"/>
-                        <path d="m14 5-4 14"/>
-
-                    </svg>
-
-                </div>
-
-                <span>Developer</span>
-
-            </div>
-
-
-            <!-- News -->
-
-            <div
-                class="shortcut"
-                onclick="nav('https://news.google.com')">
-
-                <div class="shortcut-button">
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linecap="round"
-                        stroke-linejoin="round">
-
-                        <rect x="4" y="4" width="16" height="16" rx="2"/>
-                        <path d="M8 8h8"/>
-                        <path d="M8 12h8"/>
-                        <path d="M8 16h5"/>
-
-                    </svg>
-
-                </div>
-
-                <span>News</span>
-
-            </div>
-
-
-            <!-- Social -->
-
-            <div
-                class="shortcut"
-                onclick="nav('https://twitter.com')">
-
-                <div class="shortcut-button">
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linecap="round"
-                        stroke-linejoin="round">
-
-                        <path d="M5 6h14v9a3 3 0 0 1-3 3H8l-3 3v-15z"/>
-                        <path d="M8 10h8"/>
-                        <path d="M8 13h5"/>
-
-                    </svg>
-
-                </div>
-
-                <span>Social</span>
-
-            </div>
-
-
-            <!-- Shopping -->
-
-            <div
-                class="shortcut"
-                onclick="nav('https://amazon.com')">
-
-                <div class="shortcut-button">
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linecap="round"
-                        stroke-linejoin="round">
-
-                        <path d="M4 5h2l2 11h10l2-8H7"/>
-                        <circle cx="10" cy="20" r="1"/>
-                        <circle cx="18" cy="20" r="1"/>
-
-                    </svg>
-
-                </div>
-
-                <span>Shopping</span>
-
-            </div>
-
-
-            <!-- Design -->
-
-            <div
-                class="shortcut"
-                onclick="nav('https://figma.com')">
-
-                <div class="shortcut-button">
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linecap="round"
-                        stroke-linejoin="round">
-
-                        <circle cx="9" cy="6" r="3"/>
-                        <circle cx="15" cy="6" r="3"/>
-                        <circle cx="9" cy="12" r="3"/>
-                        <circle cx="15" cy="12" r="3"/>
-                        <path d="M9 15v3a3 3 0 1 0 3-3v-3"/>
-
-                    </svg>
-
-                </div>
-
-                <span>Design</span>
-
-            </div>
-
-
-            <!-- Add -->
-
-            <div
-                class="shortcut add"
-                onclick="addLink()">
-
-                <div class="shortcut-button">
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.7"
-                        stroke-linecap="round">
-
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-
-                    </svg>
-
-                </div>
-
-                <span>Add</span>
-
+            <div class="footer">
+                RHODIUM
             </div>
 
         </div>
 
 
-        <div class="footer">
-            RHODIUM
-        </div>
+        <script>
 
-    </div>
+        document
+            .getElementById('q')
+            .addEventListener('keydown', e => {
 
+                if (e.key === 'Enter') {
 
-    <script>
+                    const value = e.target.value.trim();
 
-    document
-        .getElementById('q')
-        .addEventListener('keydown', e => {
+                    if (value) {
+                        nav(value);
+                    }
 
-            if (e.key === 'Enter') {
-
-                const value = e.target.value.trim();
-
-                if (value) {
-                    nav(value);
                 }
 
-            }
-
-        });
+            });
 
 
-    function nav(query) {
+        function nav(query) {
 
-        window.location.href =
-            'rhodium://navigate?q=' +
-            encodeURIComponent(query);
+            window.location.href =
+                'rhodium://navigate?q=' +
+                encodeURIComponent(query);
 
-    }
-
-
-    function addLink() {
-
-        const name = prompt('Link name:');
-        const url = prompt('URL:');
-
-        if (url) {
-            nav(url);
         }
 
-    }
 
-    </script>
+        function addLink() {
 
-    </body>
-    </html>"""
+            const name = prompt('Link name:');
+            const url = prompt('URL:');
+
+            if (url) {
+                nav(url);
+            }
+
+        }
+
+        </script>
+
+        </body>
+        </html>"""
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -1929,6 +2783,9 @@ def main():
     app.setApplicationName("RHODIUM Browser")
     app.setOrganizationName("Rhodium")
     window = AdvancedBrowser()
+    # Install the Global Event Filter onto QApplication
+    event_filter = ResizeMoveFilter(window)
+    app.installEventFilter(event_filter)
     window.show()
     sys.exit(app.exec())
 
