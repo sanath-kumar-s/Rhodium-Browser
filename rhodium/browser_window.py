@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
 from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject, QUrl
-from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence
+from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 
 from rhodium.utils import icon
 from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html
@@ -298,7 +298,8 @@ class AdvancedBrowser(QMainWindow):
 
         self.btn_maximize = QPushButton()
         self.btn_maximize.setObjectName("WinMaxBtn")
-        self.btn_maximize.setIcon(icon("win-maximize.png"))
+        if self.isMaximized: self.btn_maximize.setIcon(icon("win-maximize.png")) 
+        else: self.btn_maximize.setIcon(icon("win-restore.png")) 
         self.btn_maximize.setIconSize(QSize(14, 14))
         self.btn_maximize.setFixedSize(34, 34)
         self.btn_maximize.setFlat(True)
@@ -327,11 +328,11 @@ class AdvancedBrowser(QMainWindow):
     def toggle_maximize(self):
         if self.isMaximized():
             self.showNormal()
-            self.btn_maximize.setIconSize(QSize(12, 12))
+            self.btn_maximize.setIcon(icon("win-maximize.png"))
             self.setGeometry(80, 80, 1280, 820)
         else:
             self.showMaximized()
-            self.btn_maximize.setIconSize(QSize(14, 14))
+            self.btn_maximize.setIcon(icon("win-restore.png"))
 
     def create_main_menu(self) -> QMenu:
         """Single comprehensive hamburger menu replacing the menu bar."""
@@ -958,18 +959,25 @@ class AdvancedBrowser(QMainWindow):
     # ── Security Indicator & Tab Favicons ───────────────────────────────────────
     def update_security_indicator(self, url):
         scheme = url.scheme()
+        
         if scheme == "https":
-            self.security_label.setText("🔒")
-            self.security_label.setToolTip("Secure HTTPS connection")
+            icon_name = "secure.png"
+            tooltip = "Secure HTTPS connection"
         elif scheme == "http":
-            self.security_label.setText("⚠️")
-            self.security_label.setToolTip("Unsecure HTTP connection")
+            icon_name = "warning.png"
+            tooltip = "Unsecure HTTP connection"
         elif scheme in ("about", "rhodium"):
-            self.security_label.setText("ℹ️")
-            self.security_label.setToolTip("Internal page")
+            icon_name = "info (2).png"
+            tooltip = "Internal page"
         else:
-            self.security_label.setText("ℹ️")
-            self.security_label.setToolTip("Local or extension page")
+            icon_name = "info (2).png"
+            tooltip = "Local or extension page"
+
+        # Convert your custom QIcon to a QPixmap and scale it to 16x16 pixels
+        pixmap = icon(icon_name).pixmap(16, 16)
+        
+        self.security_label.setPixmap(pixmap)
+        self.security_label.setToolTip(tooltip)
 
     def update_tab_icon(self, view):
         idx = self.tab_widget.indexOf(view)
