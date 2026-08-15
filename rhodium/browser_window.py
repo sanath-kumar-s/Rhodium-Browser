@@ -21,1421 +21,12 @@ from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject, Q
 from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence
 
 from rhodium.utils import icon
-from rhodium.resources import get_stylesheet, get_home_page_html
+from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html
 from rhodium.settings_dialog import SettingsDialog
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
+from rhodium.download_manager import DownloadManager
 
-class DownloadPopup(QFrame):
-
-    def __init__(
-        self,
-        parent,
-        data,
-        completed=False
-    ):
-
-        super().__init__(
-            parent,
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-        )
-
-        self.data = data
-        self.completed = completed
-
-        self.setAttribute(
-            Qt.WidgetAttribute.WA_DeleteOnClose
-        )
-
-        self.setFixedWidth(
-            360
-        )
-
-        self.setStyleSheet("""
-            QFrame {
-                background: #181818;
-                border: 1px solid #333333;
-                border-radius: 12px;
-            }
-
-            QLabel {
-                color: #eeeeee;
-            }
-
-            QLabel#PopupTitle {
-                font-size: 14px;
-                font-weight: 700;
-            }
-
-            QLabel#PopupInfo {
-                color: #999999;
-                font-size: 12px;
-            }
-
-            QProgressBar {
-                background: #292929;
-                border: none;
-                border-radius: 3px;
-                height: 6px;
-            }
-
-            QProgressBar::chunk {
-                background: #4c8dff;
-                border-radius: 3px;
-            }
-        """)
-
-        layout = QVBoxLayout(self)
-
-        layout.setContentsMargins(
-            16,
-            14,
-            16,
-            14
-        )
-
-        layout.setSpacing(8)
-
-        title = QLabel(
-            "Download complete"
-            if completed
-            else "Downloading"
-        )
-
-        title.setObjectName(
-            "PopupTitle"
-        )
-
-        layout.addWidget(
-            title
-        )
-
-        filename = QLabel(
-            data.get(
-                "name",
-                "Unknown file"
-            )
-        )
-
-        filename.setObjectName(
-            "PopupInfo"
-        )
-
-        filename.setWordWrap(
-            True
-        )
-
-        layout.addWidget(
-            filename
-        )
-
-        if not completed:
-
-            self.progress = QProgressBar()
-
-            self.progress.setRange(
-                0,
-                100
-            )
-
-            self.progress.setValue(
-                0
-            )
-
-            self.progress.setTextVisible(
-                False
-            )
-
-            layout.addWidget(
-                self.progress
-            )
-
-            self.info = QLabel(
-                "Starting..."
-            )
-
-            self.info.setObjectName(
-                "PopupInfo"
-            )
-
-            layout.addWidget(
-                self.info
-            )
-
-        else:
-
-            info = QLabel(
-                "Download finished successfully."
-            )
-
-            info.setObjectName(
-                "PopupInfo"
-            )
-
-            layout.addWidget(
-                info
-            )
-
-        # Position near bottom-right
-        self.move_popup()
-
-        if not completed:
-
-            self.timer = QTimer(self)
-
-            self.timer.timeout.connect(
-                self.update_popup
-            )
-
-            self.timer.start(
-                250
-            )
-
-        else:
-
-            QTimer.singleShot(
-                3500,
-                self.close
-            )
-
-    def move_popup(self):
-
-        screen = QApplication.primaryScreen()
-
-        if screen is None:
-            return
-
-        geometry = screen.availableGeometry()
-
-        x = (
-            geometry.right()
-            - self.width()
-            - 20
-        )
-
-        y = (
-            geometry.bottom()
-            - self.height()
-            - 20
-        )
-
-        self.move(
-            x,
-            y
-        )
-
-    def update_popup(self):
-
-        download = self.data.get(
-            "download"
-        )
-
-        if download is None:
-            return
-
-        received = download.receivedBytes()
-        total = download.totalBytes()
-
-        if total > 0:
-
-            percent = int(
-                received * 100 / total
-            )
-
-            self.progress.setValue(
-                percent
-            )
-
-            self.info.setText(
-                f"{percent}% — "
-                f"{DownloadManager.format_bytes(received)} / "
-                f"{DownloadManager.format_bytes(total)}"
-            )
-
-        else:
-
-            self.info.setText(
-                DownloadManager.format_bytes(
-                    received
-                )
-            )
-
-
-class DownloadManager(QObject):
-
-    def __init__(self, browser):
-        super().__init__(browser)
-
-        self.browser = browser
-
-        self.downloads = {}
-
-        self.next_id = 1
-
-        self.downloads_file = (
-            Path.home()
-            / ".rhodium"
-            / "downloads.json"
-        )
-
-        self.downloads_file.parent.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        self.history = self.load_history()
-
-        self.download_dialog = None
-
-        self.init_styles()
-
-    # =============================================================
-    # STYLING
-    # =============================================================
-
-    def init_styles(self):
-
-        self.style = """
-        QDialog#DownloadsDialog {
-            background: #111111;
-        }
-
-        QFrame#DownloadItem {
-            background: #191919;
-            border: 1px solid #292929;
-            border-radius: 10px;
-        }
-
-        QLabel#DownloadFileName {
-            color: #eeeeee;
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        QLabel#DownloadStatus {
-            color: #888888;
-            font-size: 12px;
-        }
-
-        QLabel#DownloadInfo {
-            color: #888888;
-            font-size: 12px;
-        }
-
-        QProgressBar {
-            background: #292929;
-            border: none;
-            border-radius: 3px;
-        }
-
-        QProgressBar::chunk {
-            background: #4c8dff;
-            border-radius: 3px;
-        }
-
-        QPushButton#DownloadActionButton,
-        QPushButton#DownloadCancelButton {
-            background: #242424;
-            color: #dddddd;
-            border: none;
-            border-radius: 6px;
-            padding: 6px 10px;
-        }
-
-        QPushButton#DownloadActionButton:hover {
-            background: #333333;
-        }
-
-        QPushButton#DownloadCancelButton:hover {
-            background: #642c2c;
-        }
-
-        QLabel#DownloadsTitle {
-            color: white;
-            font-size: 20px;
-            font-weight: 700;
-        }
-
-        QLabel#EmptyDownloads {
-            color: #777777;
-            font-size: 14px;
-        }
-        """
-
-    # =============================================================
-    # FILE SIZE
-    # =============================================================
-
-    @staticmethod
-    def format_bytes(value):
-
-        if value is None or value < 0:
-            return "Unknown"
-
-        units = [
-            "B",
-            "KB",
-            "MB",
-            "GB",
-            "TB"
-        ]
-
-        size = float(value)
-
-        for unit in units:
-
-            if size < 1024:
-                return f"{size:.1f} {unit}"
-
-            size /= 1024
-
-        return f"{size:.1f} PB"
-
-    # =============================================================
-    # SPEED
-    # =============================================================
-
-    @staticmethod
-    def format_speed(value):
-
-        if value <= 0:
-            return "0 B/s"
-
-        return (
-            DownloadManager.format_bytes(value)
-            + "/s"
-        )
-
-    # =============================================================
-    # ETA
-    # =============================================================
-
-    @staticmethod
-    def format_eta(seconds):
-
-        if seconds is None or seconds <= 0:
-            return "Calculating..."
-
-        seconds = int(seconds)
-
-        minutes, seconds = divmod(
-            seconds,
-            60
-        )
-
-        hours, minutes = divmod(
-            minutes,
-            60
-        )
-
-        if hours:
-            return f"{hours}h {minutes}m left"
-
-        if minutes:
-            return f"{minutes}m {seconds}s left"
-
-        return f"{seconds}s left"
-
-    # =============================================================
-    # HISTORY
-    # =============================================================
-
-    def load_history(self):
-
-        try:
-
-            if self.downloads_file.exists():
-
-                return json.loads(
-                    self.downloads_file.read_text(
-                        encoding="utf-8"
-                    )
-                )
-
-        except Exception as e:
-
-            print(
-                "Could not load download history:",
-                e
-            )
-
-        return []
-
-    def save_history(self):
-
-        try:
-
-            self.downloads_file.write_text(
-                json.dumps(
-                    self.history,
-                    indent=2
-                ),
-                encoding="utf-8"
-            )
-
-        except Exception as e:
-
-            print(
-                "Could not save download history:",
-                e
-            )
-
-    # =============================================================
-    # DOWNLOAD REQUEST
-    # =============================================================
-
-    def on_download_requested(self, download):
-
-        suggested_name = (
-            download.suggestedFileName()
-        )
-
-        if not suggested_name:
-
-            suggested_name = "download"
-
-        download_dir = self.browser.settings.get(
-            "download_dir",
-            str(
-                Path.home()
-                / "Downloads"
-            )
-        )
-
-        Path(download_dir).mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        # ---------------------------------------------------------
-        # ASK USER WHERE TO SAVE
-        # ---------------------------------------------------------
-
-        save_path, selected_filter = QFileDialog.getSaveFileName(
-            self.browser,
-            "Save file",
-            str(
-                Path(download_dir)
-                / suggested_name
-            ),
-            "All Files (*)"
-        )
-
-        if not save_path:
-
-            download.cancel()
-            return
-
-        save_path = os.path.abspath(
-            save_path
-        )
-
-        directory = os.path.dirname(
-            save_path
-        )
-
-        filename = os.path.basename(
-            save_path
-        )
-
-        # ---------------------------------------------------------
-        # CREATE DOWNLOAD RECORD
-        # ---------------------------------------------------------
-
-        download_id = self.next_id
-
-        self.next_id += 1
-
-        data = {
-
-            "id": download_id,
-
-            "name": filename,
-
-            "path": save_path,
-
-            "url": download.url().toString(),
-
-            "date": datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-
-            "state": "downloading",
-
-            "download": download,
-
-            "widget": None,
-
-            "received": 0,
-
-            "total": 0,
-
-            "last_bytes": 0,
-
-            "last_time": time.monotonic(),
-
-            "speed": 0,
-
-            "paused": False,
-        }
-
-        self.downloads[
-            download_id
-        ] = data
-
-        # ---------------------------------------------------------
-        # SET DESTINATION
-        # ---------------------------------------------------------
-
-        download.setDownloadDirectory(
-            directory
-        )
-
-        download.setDownloadFileName(
-            filename
-        )
-
-        # ---------------------------------------------------------
-        # CREATE UI
-        # ---------------------------------------------------------
-
-        widget = DownloadItemWidget(
-            self,
-            download_id,
-            data
-        )
-
-        data["widget"] = widget
-
-        # ---------------------------------------------------------
-        # SIGNALS
-        # ---------------------------------------------------------
-
-        download.receivedBytesChanged.connect(
-            lambda did=download_id:
-                self.update_progress(did)
-        )
-
-        download.totalBytesChanged.connect(
-            lambda did=download_id:
-                self.update_progress(did)
-        )
-
-        download.stateChanged.connect(
-            lambda state, did=download_id:
-                self.download_state_changed(
-                    did,
-                    state
-                )
-        )
-
-        # ---------------------------------------------------------
-        # START
-        # ---------------------------------------------------------
-
-        download.accept()
-
-        self.add_download_to_ui(
-            download_id
-        )
-
-        self.show_download_popup(
-            download_id
-        )
-
-    # =============================================================
-    # ADD TO DOWNLOAD WINDOW
-    # =============================================================
-
-    def add_download_to_ui(self, download_id):
-
-        if self.download_dialog is None:
-
-            self.create_download_dialog()
-
-        data = self.downloads[
-            download_id
-        ]
-
-        item = QListWidgetItem()
-
-        item.setSizeHint(
-            data["widget"].sizeHint()
-        )
-
-        self.download_list.insertItem(
-            0,
-            item
-        )
-
-        self.download_list.setItemWidget(
-            item,
-            data["widget"]
-        )
-
-    # =============================================================
-    # PROGRESS
-    # =============================================================
-
-    def update_progress(self, download_id):
-
-        data = self.downloads.get(
-            download_id
-        )
-
-        if data is None:
-            return
-
-        download = data["download"]
-
-        received = download.receivedBytes()
-        total = download.totalBytes()
-
-        now = time.monotonic()
-
-        elapsed = (
-            now
-            - data["last_time"]
-        )
-
-        if elapsed >= 0.25:
-
-            speed = (
-                received
-                - data["last_bytes"]
-            ) / elapsed
-
-            data["speed"] = max(
-                0,
-                speed
-            )
-
-            data["last_bytes"] = received
-            data["last_time"] = now
-
-        data["received"] = received
-        data["total"] = total
-
-        if total > 0:
-
-            percent = int(
-                received * 100 / total
-            )
-
-            remaining = max(
-                0,
-                total - received
-            )
-
-            if data["speed"] > 0:
-
-                eta = (
-                    remaining
-                    / data["speed"]
-                )
-
-            else:
-
-                eta = None
-
-        else:
-
-            percent = 0
-            eta = None
-
-        widget = data["widget"]
-
-        if widget:
-
-            widget.update_progress(
-                percent,
-                received,
-                total,
-                data["speed"],
-                eta
-            )
-
-        self.browser.status_label.setText(
-            f"Downloading {data['name']} — "
-            f"{percent}%"
-        )
-
-    # =============================================================
-    # STATE
-    # =============================================================
-
-    def download_state_changed(
-        self,
-        download_id,
-        state
-    ):
-
-        from PyQt6.QtWebEngineCore import (
-            QWebEngineDownloadRequest
-        )
-
-        data = self.downloads.get(
-            download_id
-        )
-
-        if data is None:
-            return
-
-        widget = data["widget"]
-
-        if state == (
-            QWebEngineDownloadRequest.DownloadState.DownloadCompleted
-        ):
-
-            self.download_completed(
-                download_id
-            )
-
-        elif state == (
-            QWebEngineDownloadRequest.DownloadState.DownloadCancelled
-        ):
-
-            data["state"] = "cancelled"
-
-            if widget:
-                widget.mark_cancelled()
-
-            self.browser.status_label.setText(
-                "Download cancelled"
-            )
-
-        elif state == (
-            QWebEngineDownloadRequest.DownloadState.DownloadInterrupted
-        ):
-
-            data["state"] = "failed"
-
-            if widget:
-                widget.mark_failed(
-                    "Download interrupted"
-                )
-
-            self.browser.status_label.setText(
-                "Download interrupted"
-            )
-
-    # =============================================================
-    # COMPLETED
-    # =============================================================
-
-    def download_completed(
-        self,
-        download_id
-    ):
-
-        data = self.downloads.get(
-            download_id
-        )
-
-        if data is None:
-            return
-
-        data["state"] = "completed"
-
-        path = data["path"]
-
-        data["completed"] = True
-
-        # ---------------------------------------------------------
-        # SAVE HISTORY
-        # ---------------------------------------------------------
-
-        history_entry = {
-
-            "name": data["name"],
-
-            "path": path,
-
-            "url": data["url"],
-
-            "date": data["date"],
-
-            "state": "completed",
-        }
-
-        self.history.append(
-            history_entry
-        )
-
-        self.save_history()
-
-        # ---------------------------------------------------------
-        # UI
-        # ---------------------------------------------------------
-
-        widget = data["widget"]
-
-        if widget:
-            widget.mark_finished()
-
-        self.browser.status_label.setText(
-            f"Download complete: {data['name']}"
-        )
-
-        self.show_completion_popup(
-            data
-        )
-
-    # =============================================================
-    # REMOVE
-    # =============================================================
-
-    def remove_download(
-        self,
-        download_id
-    ):
-
-        data = self.downloads.pop(
-            download_id,
-            None
-        )
-
-        if data is None:
-            return
-
-        widget = data["widget"]
-
-        if widget:
-
-            item = self.download_list.itemAt(
-                0
-            )
-
-            # Find the QListWidgetItem containing widget
-            for i in range(
-                self.download_list.count()
-            ):
-
-                current_item = (
-                    self.download_list.item(i)
-                )
-
-                if (
-                    self.download_list.itemWidget(
-                        current_item
-                    )
-                    is widget
-                ):
-
-                    self.download_list.takeItem(i)
-
-                    break
-
-    # =============================================================
-    # DOWNLOAD WINDOW
-    # =============================================================
-
-    def create_download_dialog(self):
-
-        self.download_dialog = QDialog(
-            self.browser
-        )
-
-        self.download_dialog.setObjectName(
-            "DownloadsDialog"
-        )
-
-        self.download_dialog.setWindowTitle(
-            "Rhodium Downloads"
-        )
-
-        self.download_dialog.setMinimumSize(
-            760,
-            520
-        )
-
-        self.download_dialog.resize(
-            850,
-            600
-        )
-
-        self.download_dialog.setStyleSheet(
-            self.style
-        )
-
-        layout = QVBoxLayout(
-            self.download_dialog
-        )
-
-        layout.setContentsMargins(
-            20,
-            18,
-            20,
-            20
-        )
-
-        layout.setSpacing(14)
-
-        # ---------------------------------------------------------
-        # HEADER
-        # ---------------------------------------------------------
-
-        header = QHBoxLayout()
-
-        title = QLabel(
-            "Downloads"
-        )
-
-        title.setObjectName(
-            "DownloadsTitle"
-        )
-
-        header.addWidget(
-            title
-        )
-
-        header.addStretch()
-
-        self.clear_btn = QPushButton(
-            "Clear history"
-        )
-
-        self.clear_btn.clicked.connect(
-            self.clear_history
-        )
-
-        header.addWidget(
-            self.clear_btn
-        )
-
-        layout.addLayout(
-            header
-        )
-
-        # ---------------------------------------------------------
-        # LIST
-        # ---------------------------------------------------------
-
-        self.download_list = QListWidget()
-
-        self.download_list.setSpacing(
-            8
-        )
-
-        self.download_list.setFrameShape(
-            QFrame.Shape.NoFrame
-        )
-
-        layout.addWidget(
-            self.download_list
-        )
-
-        self.populate_history()
-
-    # =============================================================
-    # SHOW DOWNLOADS
-    # =============================================================
-
-    def show_downloads(self):
-
-        if self.download_dialog is None:
-
-            self.create_download_dialog()
-
-        self.download_dialog.show()
-
-        self.download_dialog.raise_()
-
-        self.download_dialog.activateWindow()
-
-    # =============================================================
-    # HISTORY
-    # =============================================================
-
-    def populate_history(self):
-
-        if not hasattr(
-            self,
-            "download_list"
-        ):
-            return
-
-        self.download_list.clear()
-
-        # Current downloads
-        for download_id in reversed(
-            list(self.downloads.keys())
-        ):
-
-            data = self.downloads[
-                download_id
-            ]
-
-            item = QListWidgetItem()
-
-            item.setSizeHint(
-                data["widget"].sizeHint()
-            )
-
-            self.download_list.addItem(
-                item
-            )
-
-            self.download_list.setItemWidget(
-                item,
-                data["widget"]
-            )
-
-    # =============================================================
-    # CLEAR HISTORY
-    # =============================================================
-
-    def clear_history(self):
-
-        reply = QMessageBox.question(
-            self.download_dialog,
-            "Clear download history",
-            "Remove all completed download history?",
-            QMessageBox.StandardButton.Yes
-            | QMessageBox.StandardButton.No
-        )
-
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        self.history.clear()
-
-        self.save_history()
-
-    # =============================================================
-    # POPUP
-    # =============================================================
-
-    def show_download_popup(
-        self,
-        download_id
-    ):
-
-        data = self.downloads.get(
-            download_id
-        )
-
-        if not data:
-            return
-
-        popup = DownloadPopup(
-            self.browser,
-            data
-        )
-
-        popup.show()
-
-    # =============================================================
-    # COMPLETION POPUP
-    # =============================================================
-
-    def show_completion_popup(
-        self,
-        data
-    ):
-
-        popup = DownloadPopup(
-            self.browser,
-            data,
-            completed=True
-        )
-
-        popup.show()
-
-
-class DownloadItemWidget(QFrame):
-    """
-    UI representation of a single browser download.
-    """
-
-    def __init__(self, manager, download_id, data):
-        super().__init__()
-
-        self.manager = manager
-        self.download_id = download_id
-        self.data = data
-
-        self.setObjectName("DownloadItem")
-        self.setMinimumHeight(105)
-
-        self.init_ui()
-
-    def init_ui(self):
-
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(14, 12, 14, 12)
-        main_layout.setSpacing(7)
-
-        # ---------------------------------------------------------
-        # TOP ROW
-        # ---------------------------------------------------------
-
-        top_layout = QHBoxLayout()
-        top_layout.setSpacing(8)
-
-        self.name_label = QLabel(
-            self.data.get("name", "Unknown file")
-        )
-
-        self.name_label.setObjectName("DownloadFileName")
-        self.name_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-
-        top_layout.addWidget(
-            self.name_label,
-            1
-        )
-
-        self.status_label = QLabel("Starting...")
-        self.status_label.setObjectName("DownloadStatus")
-
-        top_layout.addWidget(
-            self.status_label
-        )
-
-        main_layout.addLayout(top_layout)
-
-        # ---------------------------------------------------------
-        # PROGRESS BAR
-        # ---------------------------------------------------------
-
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(6)
-
-        main_layout.addWidget(self.progress)
-
-        # ---------------------------------------------------------
-        # BOTTOM ROW
-        # ---------------------------------------------------------
-
-        bottom_layout = QHBoxLayout()
-        bottom_layout.setSpacing(8)
-
-        self.info_label = QLabel("Preparing...")
-        self.info_label.setObjectName("DownloadInfo")
-
-        bottom_layout.addWidget(
-            self.info_label,
-            1
-        )
-
-        self.pause_btn = QPushButton("Pause")
-        self.pause_btn.setObjectName("DownloadActionButton")
-        self.pause_btn.clicked.connect(
-            self.toggle_pause
-        )
-
-        self.open_btn = QPushButton("Open")
-        self.open_btn.setObjectName("DownloadActionButton")
-        self.open_btn.clicked.connect(
-            self.open_file
-        )
-        self.open_btn.hide()
-
-        self.folder_btn = QPushButton("Show in folder")
-        self.folder_btn.setObjectName("DownloadActionButton")
-        self.folder_btn.clicked.connect(
-            self.open_folder
-        )
-        self.folder_btn.hide()
-
-        self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.setObjectName("DownloadCancelButton")
-        self.cancel_btn.clicked.connect(
-            self.cancel_download
-        )
-
-        self.remove_btn = QPushButton("Remove")
-        self.remove_btn.setObjectName("DownloadActionButton")
-        self.remove_btn.clicked.connect(
-            self.remove_download
-        )
-        self.remove_btn.hide()
-
-        bottom_layout.addWidget(self.pause_btn)
-        bottom_layout.addWidget(self.open_btn)
-        bottom_layout.addWidget(self.folder_btn)
-        bottom_layout.addWidget(self.cancel_btn)
-        bottom_layout.addWidget(self.remove_btn)
-
-        main_layout.addLayout(bottom_layout)
-
-    # =============================================================
-    # UPDATE
-    # =============================================================
-
-    def update_progress(
-        self,
-        percent,
-        received,
-        total,
-        speed,
-        eta
-    ):
-
-        self.progress.setValue(percent)
-
-        received_text = self.manager.format_bytes(received)
-
-        if total > 0:
-
-            total_text = self.manager.format_bytes(total)
-
-            self.info_label.setText(
-                f"{received_text} / {total_text}   •   "
-                f"{self.manager.format_speed(speed)}   •   "
-                f"{self.manager.format_eta(eta)}"
-            )
-
-        else:
-
-            self.info_label.setText(
-                f"{received_text}   •   "
-                f"{self.manager.format_speed(speed)}"
-            )
-
-        self.status_label.setText(
-            f"{percent}%"
-        )
-
-    # =============================================================
-    # PAUSE / RESUME
-    # =============================================================
-
-    def toggle_pause(self):
-
-        download = self.data.get("download")
-
-        if download is None:
-            return
-
-        if self.data.get("paused", False):
-
-            download.resume()
-
-            self.data["paused"] = False
-            self.pause_btn.setText("Pause")
-            self.status_label.setText("Downloading...")
-
-        else:
-
-            download.pause()
-
-            self.data["paused"] = True
-            self.pause_btn.setText("Resume")
-            self.status_label.setText("Paused")
-
-    # =============================================================
-    # CANCEL
-    # =============================================================
-
-    def cancel_download(self):
-
-        download = self.data.get("download")
-
-        if download is not None:
-            download.cancel()
-
-    # =============================================================
-    # OPEN FILE
-    # =============================================================
-
-    def open_file(self):
-
-        path = self.data.get("path")
-
-        if not path:
-            return
-
-        if not os.path.exists(path):
-            QMessageBox.warning(
-                self,
-                "File not found",
-                "The downloaded file no longer exists."
-            )
-            return
-
-        QDesktopServices.openUrl(
-            QUrl.fromLocalFile(path)
-        )
-
-    # =============================================================
-    # OPEN FOLDER
-    # =============================================================
-
-    def open_folder(self):
-
-        path = self.data.get("path")
-
-        if not path:
-            return
-
-        folder = os.path.dirname(path)
-
-        if os.path.exists(folder):
-
-            QDesktopServices.openUrl(
-                QUrl.fromLocalFile(folder)
-            )
-
-    # =============================================================
-    # REMOVE
-    # =============================================================
-
-    def remove_download(self):
-
-        self.manager.remove_download(
-            self.download_id
-        )
-
-    # =============================================================
-    # FINISHED
-    # =============================================================
-
-    def mark_finished(self):
-
-        self.status_label.setText("Completed")
-        self.progress.setValue(100)
-
-        self.pause_btn.hide()
-        self.cancel_btn.hide()
-
-        self.open_btn.show()
-        self.folder_btn.show()
-        self.remove_btn.show()
-
-    # =============================================================
-    # FAILED
-    # =============================================================
-
-    def mark_failed(self, reason="Download failed"):
-
-        self.status_label.setText("Failed")
-
-        self.info_label.setText(reason)
-
-        self.pause_btn.hide()
-        self.cancel_btn.hide()
-
-        self.remove_btn.show()
-
-    # =============================================================
-    # CANCELLED
-    # =============================================================
-
-    def mark_cancelled(self):
-
-        self.status_label.setText("Cancelled")
-
-        self.pause_btn.hide()
-        self.cancel_btn.hide()
-
-        self.remove_btn.show()
 
 class AdvancedBrowser(QMainWindow):
     """RHODIUM – Advanced Browser"""
@@ -1457,7 +48,8 @@ class AdvancedBrowser(QMainWindow):
         self.bookmarks = self.load_bookmarks()
         self.history   = self.load_history()
         self.settings  = self.load_settings()
-        # self.downloads = self.load_downloads()
+        self.shortcuts_file = self.config_dir / "shortcuts.json"
+        self.shortcuts = self.load_shortcuts()
 
         self.setMenuBar(None)          # No old-style menu bar
         self.init_ui()
@@ -1637,6 +229,16 @@ class AdvancedBrowser(QMainWindow):
         )
         self.url_bar.setFixedHeight(36)
         self.url_bar.returnPressed.connect(self.navigate_to_url)
+
+        self.security_label = QLabel()
+        self.security_label.setStyleSheet("padding-left: 8px; font-size: 14px; background: transparent; margin-right: 4px;")
+        self.security_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        url_layout = QHBoxLayout(self.url_bar)
+        url_layout.setContentsMargins(0, 0, 0, 0)
+        url_layout.addWidget(self.security_label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.url_bar.setTextMargins(30, 0, 0, 0)
+
         bar.addWidget(self.url_bar)
 
         bar.addSeparator()
@@ -1829,15 +431,14 @@ class AdvancedBrowser(QMainWindow):
         view.loadFinished.connect(lambda ok: self.on_load_finished(ok, view))
         view.titleChanged.connect(lambda t: self.on_title_changed(t, view))
         view.urlChanged.connect(lambda u: self.on_url_changed(u, view))
-
-        page.profile().downloadRequested.connect(self.download_manager.on_download_requested)
+        view.iconChanged.connect(lambda: self.update_tab_icon(view))
 
         idx = self.tab_widget.addTab(view, "New Tab")
         self.tab_widget.setCurrentIndex(idx)
         self.tab_widget.setTabToolTip(idx, "New Tab")
 
-        if url in ("about:home", "rhodium://home"):
-            view.setHtml(get_home_page_html(), QUrl("about:blank"))
+        if url in ("about:home", "rhodium://home", "about:blank", ""):
+            view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
         else:
             self._load_in_view(url, view)
 
@@ -1874,7 +475,7 @@ class AdvancedBrowser(QMainWindow):
         if not view:
             return
         if url in ("about:home", "rhodium://home"):
-            view.setHtml(get_home_page_html(), QUrl("about:blank"))
+            view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
         else:
             self._load_in_view(url, view)
 
@@ -1883,7 +484,7 @@ class AdvancedBrowser(QMainWindow):
         if not view:
             return
         if url in ("about:home", "rhodium://home"):
-            view.setHtml(get_home_page_html(), QUrl("about:blank"))
+            view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
         else:
             self._load_in_view(url, view)
 
@@ -2107,7 +708,10 @@ class AdvancedBrowser(QMainWindow):
 
     def apply_global_settings(self):
         profile = QWebEngineProfile.defaultProfile()
-        self.download_manager = DownloadManager(self)
+        try:
+            profile.downloadRequested.disconnect()
+        except TypeError:
+            pass
 
         profile.downloadRequested.connect(
             self.download_manager.on_download_requested
@@ -2154,13 +758,22 @@ class AdvancedBrowser(QMainWindow):
             self.tab_widget.setTabText(idx, short)
             self.tab_widget.setTabToolTip(idx, title)
 
+        if not ok:
+            parsed = urllib.parse.urlparse(url)
+            if parsed.scheme in ("http", "https") and "rhodium://retry" not in url:
+                view.setHtml(get_offline_page_html(url), QUrl(url))
+                return
+
         if self.get_current_view() == view:
             self.status_label.setText("Done" if ok else "Failed to load page")
             self.url_bar.setText("rhodium://home" if url in ("about:blank", "") else url)
             self._update_bookmark_icon(url)
+            self.update_security_indicator(view.url())
 
-        if ok and url not in ("about:blank", ""):
+        if ok and url not in ("about:blank", "") and "rhodium://home" not in url:
             self.add_to_history(url, title)
+        
+        self.update_tab_icon(view)
 
     def on_title_changed(self, title, view):
         idx = self.tab_widget.indexOf(view)
@@ -2178,6 +791,8 @@ class AdvancedBrowser(QMainWindow):
         if self.get_current_view() == view:
             self.url_bar.setText("rhodium://home" if url_str in ("about:blank", "") else url_str)
             self._update_bookmark_icon(url_str)
+            self.update_security_indicator(url)
+        self.update_tab_icon(view)
 
     def show_about(self):
         QMessageBox.about(self, "About RHODIUM",
@@ -2219,3 +834,183 @@ class AdvancedBrowser(QMainWindow):
 
     def get_stylesheet(self) -> str:
         return get_stylesheet()
+
+    # ── Shortcuts & Favicons Caching ───────────────────────────────────────────
+    def load_shortcuts(self):
+        if self.shortcuts_file.exists():
+            try:
+                return json.loads(self.shortcuts_file.read_text(encoding="utf-8"))
+            except Exception as e:
+                print("Error loading shortcuts:", e)
+        defaults = [
+            {"name": "Google", "url": "https://google.com"},
+            {"name": "YouTube", "url": "https://youtube.com"},
+            {"name": "GitHub", "url": "https://github.com"},
+            {"name": "Gmail", "url": "https://mail.google.com"}
+        ]
+        for d in defaults:
+            self.fetch_favicon_async(d["url"])
+        return defaults
+
+    def save_shortcuts(self):
+        try:
+            self.shortcuts_file.write_text(json.dumps(self.shortcuts, indent=2), encoding="utf-8")
+        except Exception as e:
+            print("Error saving shortcuts:", e)
+
+    def fetch_favicon_async(self, url):
+        import threading
+        import urllib.request
+        from urllib.parse import urlparse
+        
+        def run():
+            try:
+                parsed = urlparse(url)
+                domain = parsed.netloc
+                if not domain:
+                    return
+                fav_dir = self.config_dir / "favicons"
+                fav_dir.mkdir(exist_ok=True)
+                cache_path = fav_dir / f"{domain}.png"
+                if cache_path.exists():
+                    self.update_shortcut_favicon_path(url, str(cache_path))
+                    return
+                
+                fav_url = f"https://www.google.com/s2/favicons?sz=64&domain={domain}"
+                req = urllib.request.Request(fav_url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    data = response.read()
+                    if data:
+                        cache_path.write_bytes(data)
+                        self.update_shortcut_favicon_path(url, str(cache_path))
+            except Exception as e:
+                print("Failed to fetch favicon for", url, e)
+                
+        threading.Thread(target=run, daemon=True).start()
+
+    def update_shortcut_favicon_path(self, url, path):
+        updated = False
+        for s in self.shortcuts:
+            if s["url"] == url:
+                s["favicon"] = path
+                updated = True
+        if updated:
+            self.save_shortcuts()
+            QTimer.singleShot(0, self.refresh_home_pages)
+
+    def refresh_home_pages(self):
+        for i in range(self.tab_widget.count()):
+            view = self.tab_widget.widget(i)
+            if isinstance(view, QWebEngineView):
+                url = view.url().toString()
+                if url in ("about:home", "rhodium://home", "about:blank", ""):
+                    view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+
+    def add_shortcut_dialog(self):
+        dlg = ShortcutDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            name = dlg.name_input.text().strip()
+            url_str = dlg.url_input.text().strip()
+            if not name or not url_str:
+                return
+            if not (url_str.startswith("http://") or url_str.startswith("https://")):
+                url_str = "https://" + url_str
+            if any(s["url"] == url_str for s in self.shortcuts):
+                QMessageBox.warning(self, "Duplicate Shortcut", "A shortcut with this URL already exists.")
+                return
+            self.shortcuts.append({"name": name, "url": url_str})
+            self.save_shortcuts()
+            self.fetch_favicon_async(url_str)
+            self.refresh_home_pages()
+
+    def edit_shortcut_dialog(self, target_url):
+        shortcut = None
+        for s in self.shortcuts:
+            if s["url"] == target_url:
+                shortcut = s
+                break
+        if not shortcut:
+            return
+        dlg = ShortcutDialog(self, shortcut["name"], shortcut["url"])
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            name = dlg.name_input.text().strip()
+            url_str = dlg.url_input.text().strip()
+            if not name or not url_str:
+                return
+            if not (url_str.startswith("http://") or url_str.startswith("https://")):
+                url_str = "https://" + url_str
+            if url_str != target_url and any(s["url"] == url_str for s in self.shortcuts):
+                QMessageBox.warning(self, "Duplicate Shortcut", "A shortcut with this URL already exists.")
+                return
+            shortcut["name"] = name
+            shortcut["url"] = url_str
+            if url_str != target_url:
+                shortcut["favicon"] = ""
+                self.fetch_favicon_async(url_str)
+            self.save_shortcuts()
+            self.refresh_home_pages()
+
+    def delete_shortcut(self, target_url):
+        self.shortcuts = [s for s in self.shortcuts if s["url"] != target_url]
+        self.save_shortcuts()
+        self.refresh_home_pages()
+
+    # ── Security Indicator & Tab Favicons ───────────────────────────────────────
+    def update_security_indicator(self, url):
+        scheme = url.scheme()
+        if scheme == "https":
+            self.security_label.setText("🔒")
+            self.security_label.setToolTip("Secure HTTPS connection")
+        elif scheme == "http":
+            self.security_label.setText("⚠️")
+            self.security_label.setToolTip("Unsecure HTTP connection")
+        elif scheme in ("about", "rhodium"):
+            self.security_label.setText("ℹ️")
+            self.security_label.setToolTip("Internal page")
+        else:
+            self.security_label.setText("ℹ️")
+            self.security_label.setToolTip("Local or extension page")
+
+    def update_tab_icon(self, view):
+        idx = self.tab_widget.indexOf(view)
+        if idx < 0:
+            return
+        url_str = view.url().toString()
+        if url_str in ("about:home", "rhodium://home", "about:blank", ""):
+            self.tab_widget.setTabIcon(idx, icon("home.png"))
+            return
+        if "google.com/search" in url_str:
+            self.tab_widget.setTabIcon(idx, icon("search.png"))
+            return
+        page_icon = view.icon()
+        if page_icon and not page_icon.isNull():
+            self.tab_widget.setTabIcon(idx, page_icon)
+        else:
+            self.tab_widget.setTabIcon(idx, icon("info (2).png"))
+
+class ShortcutDialog(QDialog):
+    def __init__(self, parent=None, name="", url=""):
+        super().__init__(parent)
+        self.setWindowTitle("Edit Shortcut" if url else "Add Shortcut")
+        self.setMinimumWidth(360)
+        self.setStyleSheet(parent.styleSheet())
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+        layout.addWidget(QLabel("Name:"))
+        self.name_input = QLineEdit()
+        self.name_input.setText(name)
+        layout.addWidget(self.name_input)
+        layout.addWidget(QLabel("URL:"))
+        self.url_input = QLineEdit()
+        self.url_input.setText(url)
+        layout.addWidget(self.url_input)
+        btns = QHBoxLayout()
+        self.save_btn = QPushButton("Save")
+        self.save_btn.setObjectName("PrimaryBtn")
+        self.cancel_btn = QPushButton("Cancel")
+        btns.addWidget(self.save_btn)
+        btns.addWidget(self.cancel_btn)
+        layout.addLayout(btns)
+        self.save_btn.clicked.connect(self.accept)
+        self.cancel_btn.clicked.connect(self.reject)

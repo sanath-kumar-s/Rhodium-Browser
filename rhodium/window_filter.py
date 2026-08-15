@@ -37,21 +37,29 @@ class ResizeMoveFilter(QObject):
             return True
 
         # ---------------------------------------------------------
+        # Empty area of the toolbar (NavBar)
+        # ---------------------------------------------------------
+        toolbar = getattr(self.win, "toolbar", None)
+        if toolbar and toolbar.isVisible():
+            tool_pos = toolbar.mapFromGlobal(global_pos)
+            if toolbar.rect().contains(tool_pos):
+                child = toolbar.childAt(tool_pos)
+                if child is None:
+                    return True
+
+        # ---------------------------------------------------------
         # Empty area of the tab bar
         # ---------------------------------------------------------
-        tab_bar = self.win.tab_widget.tabBar()
-
-        if tab_bar:
-            tab_pos = tab_bar.mapFromGlobal(global_pos)
-
-            if tab_bar.rect().contains(tab_pos):
-
-                # Only block dragging when click lands on an actual tab.
-                # tabAt() returns -1 for empty tab bar space.
-                if tab_bar.tabAt(tab_pos) >= 0:
-                    return False
-
-                return True
+        tab_widget = getattr(self.win, "tab_widget", None)
+        if tab_widget:
+            tab_bar = tab_widget.tabBar()
+            if tab_bar and tab_bar.isVisible():
+                tab_pos = tab_bar.mapFromGlobal(global_pos)
+                if tab_bar.rect().contains(tab_pos):
+                    if tab_bar.tabAt(tab_pos) < 0:
+                        child = tab_bar.childAt(tab_pos)
+                        if child is None:
+                            return True
 
         return False
 
@@ -112,10 +120,20 @@ class ResizeMoveFilter(QObject):
             # MOVING
             # -----------------------------------------------------
             if self.is_moving:
-
-                self.win.move(
-                    pos - self.drag_start_pos
-                )
+                if self.win.isMaximized():
+                    # Dragging a maximized window restores it
+                    local_pos = self.win.mapFromGlobal(pos)
+                    click_x_ratio = local_pos.x() / self.win.width()
+                    self.win.showNormal()
+                    new_width = self.win.width()
+                    new_x = int(pos.x() - click_x_ratio * new_width)
+                    new_y = pos.y() - local_pos.y()
+                    self.win.move(new_x, new_y)
+                    self.drag_start_pos = pos - self.win.frameGeometry().topLeft()
+                else:
+                    self.win.move(
+                        pos - self.drag_start_pos
+                    )
 
                 return True
 
