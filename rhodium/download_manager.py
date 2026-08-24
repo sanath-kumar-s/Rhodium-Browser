@@ -324,6 +324,7 @@ class DownloadManager(QObject):
 
         self.download_added.emit(item)
         self.download_updated.emit(item)
+        self.history_changed.emit()
         self._schedule_save()
 
     def _sync_progress(self, item: DownloadItem):
@@ -379,6 +380,7 @@ class DownloadManager(QObject):
         item.reply = None
         if state != DownloadState.COMPLETED and item.received_size <= 0:
             item.received_size = 0
+        self.history_changed.emit()
 
     def _delete_partial(self, item: DownloadItem):
         try:

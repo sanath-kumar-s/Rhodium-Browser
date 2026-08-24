@@ -152,6 +152,12 @@ class AdvancedBrowser(QMainWindow):
 
         self.download_manager = DownloadManager(self)
 
+        self._downloads_refresh_timer = QTimer(self)
+        self._downloads_refresh_timer.setSingleShot(True)
+        self._downloads_refresh_timer.setInterval(500)
+        self._downloads_refresh_timer.timeout.connect(self.refresh_downloads_tabs)
+        self.download_manager.history_changed.connect(self._downloads_refresh_timer.start)
+
         self.setMenuBar(None)          # No old-style menu bar
         self.init_ui()
         self.apply_global_settings()

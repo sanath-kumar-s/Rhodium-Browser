@@ -1,7 +1,16 @@
 import urllib.parse
-from PyQt6.QtCore import QUrl, pyqtProperty, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, QUrl, QPoint, QTimer, QEvent, pyqtProperty, QPropertyAnimation, QEasingCurve
+from PyQt6.QtGui import QCursor, QPixmap
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage
+
+from rhodium.utils import ICONS_DIR
+
+# ── Middle-button autoscroll tuning ──────────────────────────────────────────
+AUTOSCROLL_ICON_PATH = ICONS_DIR / "scroll.png"
+AUTOSCROLL_DEAD_ZONE = 6        # px around the anchor where no scrolling happens
+AUTOSCROLL_SPEED = 0.15         # scroll px per frame, per px of offset from anchor
+AUTOSCROLL_TICK_MS = 16         # ~60 fps scroll updates
 
 class RhodiumWebEnginePage(QWebEnginePage):
     def __init__(self, browser_window, view=None, parent=None):
@@ -63,6 +72,122 @@ class SmoothWebEngineView(QWebEngineView):
         self._scroll_animation = None
         self._pending_scroll = 0
 
+        # Middle-button autoscroll state
+        self._web_input_proxy = None
+        self._autoscroll_active = False
+        self._autoscroll_origin = QPoint()
+        self._autoscroll_speed_x = 0.0
+        self._autoscroll_speed_y = 0.0
+        self._autoscroll_accum_x = 0.0
+        self._autoscroll_accum_y = 0.0
+
+        self._autoscroll_timer = QTimer(self)
+        self._autoscroll_timer.setInterval(AUTOSCROLL_TICK_MS)
+        self._autoscroll_timer.timeout.connect(self._tick_autoscroll)
+
+    # ── Middle-button autoscroll ─────────────────────────────────────────────
+    def showEvent(self, event):
+        self._hook_web_input()
+        super().showEvent(event)
+
+    def hideEvent(self, event):
+        if self._autoscroll_active:
+            self._stop_autoscroll()
+        super().hideEvent(event)
+
+    def _hook_web_input(self):
+        # QtWebEngine delivers mouse input to its internal render widget
+        # (focusProxy), not to the QWebEngineView itself, so we filter there.
+        proxy = self.focusProxy()
+        if proxy is not None and proxy is not self._web_input_proxy:
+            if self._web_input_proxy is not None:
+                self._web_input_proxy.removeEventFilter(self)
+            proxy.installEventFilter(self)
+            self._web_input_proxy = proxy
+
+    def eventFilter(self, obj, event):
+        event_type = event.type()
+
+        if event_type == QEvent.Type.MouseButtonPress:
+            self._hook_web_input()
+            if (obj is self._web_input_proxy
+                    and event.button() == Qt.MouseButton.MiddleButton
+                    and not self._autoscroll_active):
+                self._start_autoscroll(event.position().toPoint())
+                return True
+
+        elif self._autoscroll_active and obj is self._web_input_proxy:
+            if event_type == QEvent.Type.MouseMove:
+                self._update_autoscroll_speed(event.position().toPoint())
+                return True
+            if (event_type == QEvent.Type.MouseButtonRelease
+                    and event.button() == Qt.MouseButton.MiddleButton):
+                self._stop_autoscroll()
+                return True
+
+        return super().eventFilter(obj, event)
+
+    def _start_autoscroll(self, pos):
+        self._autoscroll_active = True
+        self._autoscroll_origin = pos
+        self._autoscroll_speed_x = 0.0
+        self._autoscroll_speed_y = 0.0
+        self._autoscroll_accum_x = 0.0
+        self._autoscroll_accum_y = 0.0
+        self._update_autoscroll_speed(pos)
+        self._set_autoscroll_cursor()
+        self._autoscroll_timer.start()
+
+    def _update_autoscroll_speed(self, pos):
+        dx = pos.x() - self._autoscroll_origin.x()
+        dy = pos.y() - self._autoscroll_origin.y()
+        self._autoscroll_speed_x = self._axis_scroll_speed(dx)
+        self._autoscroll_speed_y = self._axis_scroll_speed(dy)
+
+    @staticmethod
+    def _axis_scroll_speed(delta):
+        distance = abs(delta)
+        if distance <= AUTOSCROLL_DEAD_ZONE:
+            return 0.0
+        speed = (distance - AUTOSCROLL_DEAD_ZONE) * AUTOSCROLL_SPEED
+        return speed if delta > 0 else -speed
+
+    def _tick_autoscroll(self):
+        self._autoscroll_accum_x += self._autoscroll_speed_x
+        self._autoscroll_accum_y += self._autoscroll_speed_y
+
+        step_x = int(self._autoscroll_accum_x)
+        step_y = int(self._autoscroll_accum_y)
+        if step_x == 0 and step_y == 0:
+            return
+
+        self._autoscroll_accum_x -= step_x
+        self._autoscroll_accum_y -= step_y
+        self.page().runJavaScript(f"window.scrollBy({step_x}, {step_y});")
+
+    def _stop_autoscroll(self):
+        self._autoscroll_active = False
+        self._autoscroll_timer.stop()
+        self._autoscroll_speed_x = 0.0
+        self._autoscroll_speed_y = 0.0
+        self._autoscroll_accum_x = 0.0
+        self._autoscroll_accum_y = 0.0
+        self.unsetCursor()
+
+    def _set_autoscroll_cursor(self):
+        pixmap = QPixmap(str(AUTOSCROLL_ICON_PATH))
+        if pixmap.isNull():
+            self.setCursor(Qt.CursorShape.BlankCursor)
+            return
+        if max(pixmap.width(), pixmap.height()) > 32:
+            pixmap = pixmap.scaled(
+                32, 32,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        hotspot = QPoint(pixmap.width() // 2, pixmap.height() // 2)
+        self.setCursor(QCursor(pixmap, hotspot.x(), hotspot.y()))
+
     def wheelEvent(self, event):
         delta = event.angleDelta().y()
 
@@ -73,7 +198,7 @@ class SmoothWebEngineView(QWebEngineView):
         # We increase it slightly for a browser-like feel.
         scroll_amount = int(delta * 1.5)
 
-        
+
         # Store the requested movement.
         self._pending_scroll = scroll_amount
 

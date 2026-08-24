@@ -354,6 +354,41 @@ def get_stylesheet() -> str:
             border: none;
         }
 
+        QFrame#DownloadPopup QScrollBar:vertical,
+        QFrame#DownloadPanel QScrollBar:vertical {
+            background: transparent;
+            width: 8px;
+            margin: 6px 3px;
+        }
+
+        QFrame#DownloadPopup QScrollBar::handle:vertical,
+        QFrame#DownloadPanel QScrollBar::handle:vertical {
+            background: #2e3540;
+            border-radius: 2px;
+            min-height: 30px;
+        }
+
+        QFrame#DownloadPopup QScrollBar::handle:vertical:hover,
+        QFrame#DownloadPanel QScrollBar::handle:vertical:hover {
+            background: #3b4450;
+        }
+
+        QFrame#DownloadPopup QScrollBar::add-line:vertical,
+        QFrame#DownloadPanel QScrollBar::add-line:vertical,
+        QFrame#DownloadPopup QScrollBar::sub-line:vertical,
+        QFrame#DownloadPanel QScrollBar::sub-line:vertical {
+            height: 0;
+            background: none;
+            border: none;
+        }
+
+        QFrame#DownloadPopup QScrollBar::add-page:vertical,
+        QFrame#DownloadPanel QScrollBar::add-page:vertical,
+        QFrame#DownloadPopup QScrollBar::sub-page:vertical,
+        QFrame#DownloadPanel QScrollBar::sub-page:vertical {
+            background: none;
+        }
+
 
         /* =========================================================
         STATUS BAR

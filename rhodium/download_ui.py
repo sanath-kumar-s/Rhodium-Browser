@@ -2,7 +2,8 @@ from PyQt6.QtCore import Qt, QPoint, QRect, QRectF, QSize, QObject, QEvent, QTim
 from PyQt6.QtGui import QPainter, QColor, QPen
 from PyQt6.QtWidgets import (
     QToolButton, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
-    QGraphicsOpacityEffect, QScrollArea, QApplication, QMenu, QWidget
+    QGraphicsOpacityEffect, QScrollArea, QApplication, QMenu, QWidget,
+    QSizePolicy
 )
 
 from rhodium.utils import icon
@@ -140,6 +141,9 @@ class DownloadPopupItem(QFrame):
 
         self.name_label = QLabel(item.filename)
         self.name_label.setObjectName("DownloadItemName")
+        self.name_label.setToolTip(item.filename)
+        self.name_label.setMinimumWidth(0)
+        self.name_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         top.addWidget(self.name_label, 1)
         grid.addLayout(top)
 
@@ -251,6 +255,7 @@ class DownloadPopup(QFrame):
         layout.addWidget(self.header)
 
         self.scroll = QScrollArea()
+        self.scroll.setObjectName("DownloadScroll")
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -260,6 +265,8 @@ class DownloadPopup(QFrame):
         self.items_layout.setSpacing(4)
         self.items_layout.addStretch()
         self.scroll.setWidget(container)
+        self.scroll.viewport().setStyleSheet("background: transparent;")
+        container.setStyleSheet("background: transparent;")
         layout.addWidget(self.scroll)
 
         self._items = {}
@@ -389,6 +396,9 @@ class DownloadMenuRow(QFrame):
         middle.setSpacing(2)
         name = QLabel(item.filename)
         name.setObjectName("DownloadItemName")
+        name.setToolTip(item.filename)
+        name.setMinimumWidth(0)
+        name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         middle.addWidget(name)
         status = QLabel(status_text(item))
         status.setObjectName("DownloadItemStatus")
@@ -493,6 +503,7 @@ class DownloadMenuPanel(QFrame):
         layout.addWidget(line)
 
         self.scroll = QScrollArea()
+        self.scroll.setObjectName("DownloadScroll")
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -502,6 +513,8 @@ class DownloadMenuPanel(QFrame):
         self.rows_layout.setSpacing(2)
         self.rows_layout.addStretch()
         self.scroll.setWidget(container)
+        self.scroll.viewport().setStyleSheet("background: transparent;")
+        container.setStyleSheet("background: transparent;")
         layout.addWidget(self.scroll)
 
         footer = ClickableLabel("Show all downloads", self._open_all)
