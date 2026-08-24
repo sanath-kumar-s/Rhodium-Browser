@@ -11,9 +11,9 @@ import subprocess
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QLabel, QCheckBox,
-    QMessageBox, QMenu, QInputDialog, QToolBar, QTabWidget, QStatusBar,
-    QDialog, QListWidget, QTextEdit, QSizePolicy, QFileDialog, QToolButton, QApplication, QProgressBar, QListWidgetItem, 
-    QFrame
+    QMessageBox, QMenu, QInputDialog, QToolBar, QTabBar, QStatusBar,
+    QDialog, QListWidget, QTextEdit, QSizePolicy, QFileDialog, QToolButton, QApplication, QProgressBar, QListWidgetItem,
+    QFrame, QStackedWidget
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
@@ -25,6 +25,105 @@ from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_pa
 from rhodium.settings_dialog import SettingsDialog
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
+
+
+class RhodiumTabWidget(QWidget):
+    """Chrome-style tab area: a tab strip with an inline '+' button above a page stack."""
+
+    tabCloseRequested = pyqtSignal(int)
+    currentChanged = pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("BrowserTabs")
+
+        self.tab_bar = QTabBar()
+        self.tab_bar.setObjectName("RhodiumTabBar")
+        self.tab_bar.setTabsClosable(True)
+        self.tab_bar.setMovable(True)
+        self.tab_bar.setUsesScrollButtons(True)
+        self.tab_bar.setExpanding(False)
+        self.tab_bar.setElideMode(Qt.TextElideMode.ElideRight)
+        self.tab_bar.setIconSize(QSize(16, 16))
+        self.tab_bar.setDrawBase(False)
+
+        self.new_tab_button = QToolButton()
+        self.new_tab_button.setObjectName("NewTabButton")
+        self.new_tab_button.setAutoRaise(True)
+        self.new_tab_button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        strip = QWidget()
+        strip.setObjectName("TabStrip")
+        strip_layout = QHBoxLayout(strip)
+        strip_layout.setContentsMargins(6, 0, 6, 0)
+        strip_layout.setSpacing(4)
+        strip_layout.addWidget(self.tab_bar)
+        strip_layout.addWidget(self.new_tab_button)
+        strip_layout.addStretch()
+
+        self.stack = QStackedWidget()
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(strip)
+        outer.addWidget(self.stack)
+
+        self.tab_bar.currentChanged.connect(self._on_current_changed)
+        self.tab_bar.tabCloseRequested.connect(self.tabCloseRequested)
+        self.tab_bar.tabMoved.connect(self._on_tab_moved)
+
+    def _on_current_changed(self, index):
+        self.stack.setCurrentIndex(index)
+        self.currentChanged.emit(index)
+
+    def _on_tab_moved(self, from_index, to_index):
+        widget = self.stack.widget(from_index)
+        self.stack.removeWidget(widget)
+        self.stack.insertWidget(to_index, widget)
+        self.stack.setCurrentIndex(self.tab_bar.currentIndex())
+
+    def tabBar(self):
+        return self.tab_bar
+
+    def addTab(self, widget, label=""):
+        index = self.stack.addWidget(widget)
+        self.tab_bar.addTab(label)
+        return index
+
+    def removeTab(self, index):
+        widget = self.stack.widget(index)
+        if widget is None:
+            return
+        self.stack.removeWidget(widget)
+        self.tab_bar.removeTab(index)
+
+    def widget(self, index):
+        return self.stack.widget(index)
+
+    def count(self):
+        return self.stack.count()
+
+    def indexOf(self, widget):
+        return self.stack.indexOf(widget)
+
+    def currentWidget(self):
+        return self.stack.currentWidget()
+
+    def currentIndex(self):
+        return self.tab_bar.currentIndex()
+
+    def setCurrentIndex(self, index):
+        self.tab_bar.setCurrentIndex(index)
+
+    def setTabText(self, index, text):
+        self.tab_bar.setTabText(index, text)
+
+    def setTabToolTip(self, index, text):
+        self.tab_bar.setTabToolTip(index, text)
+
+    def setTabIcon(self, index, tab_icon):
+        self.tab_bar.setTabIcon(index, tab_icon)
 
 
 class AdvancedBrowser(QMainWindow):
@@ -85,39 +184,16 @@ class AdvancedBrowser(QMainWindow):
         vbox.addWidget(self.toolbar)
 
         # TAB SYSTEM
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setObjectName("BrowserTabs")
+        self.tab_widget = RhodiumTabWidget()
 
-        self.tab_widget.setTabsClosable(True)
-        self.tab_widget.setDocumentMode(True)
-
-        self.tab_widget.setMovable(True)
-        self.tab_widget.setUsesScrollButtons(True)
-        self.tab_widget.setElideMode(Qt.TextElideMode.ElideRight)
-        self.tab_widget.setIconSize(QSize(16, 16))
-
-        tab_bar = self.tab_widget.tabBar()
-        tab_bar.setObjectName("RhodiumTabBar")
-        tab_bar.setMinimumHeight(42)
-        tab_bar.setExpanding(False)
+        self.tab_widget.new_tab_button.setIcon(icon("plus.png"))
+        self.tab_widget.new_tab_button.setIconSize(QSize(16, 16))
+        self.tab_widget.new_tab_button.setFixedSize(28, 28)
+        self.tab_widget.new_tab_button.setToolTip("New Tab  (Ctrl+T)")
+        self.tab_widget.new_tab_button.clicked.connect(lambda: self.add_new_tab())
 
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.tab_widget.currentChanged.connect(self.tab_changed)
-
-        # NEW TAB BUTTON
-        self.new_tab_button = QToolButton()
-        self.new_tab_button.setObjectName("NewTabButton")
-        self.new_tab_button.setIcon(icon("plus.png"))
-        self.new_tab_button.setIconSize(QSize(16, 16))
-        self.new_tab_button.setFixedSize(28, 28)
-        self.new_tab_button.setAutoRaise(True)
-        self.new_tab_button.setToolTip("New Tab  (Ctrl+T)")
-        self.new_tab_button.clicked.connect(lambda: self.add_new_tab())
-
-        self.tab_widget.setCornerWidget(
-            self.new_tab_button,
-            Qt.Corner.TopRightCorner
-        )
 
         vbox.addWidget(self.tab_widget)
 

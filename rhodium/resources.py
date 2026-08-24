@@ -120,64 +120,49 @@ def get_stylesheet() -> str:
         BROWSER TABS
         ========================================================= */
 
-        QTabWidget#BrowserTabs {
+        QWidget#BrowserTabs {
             background: #0b0d10;
             border: none;
         }
 
-        QTabWidget#BrowserTabs::pane {
-            border: none;
-            background: #0b0d10;
-            top: -1px;
-        }
-
-        QTabWidget#BrowserTabs::tab-bar {
-            alignment: left;
-            left: 0;
+        QWidget#TabStrip {
+            background: #0e1014;
+            border-bottom: 1px solid #1c2129;
         }
 
         QTabBar#RhodiumTabBar {
-            background: #0e1014;
+            background: transparent;
             border: none;
-            border-bottom: 1px solid #1c2129;
-            padding: 6px 10px 0 10px;
             qproperty-drawBase: 0;
-            min-height: 42px;
-            max-height: 42px;
-        }
-
-        QTabBar#RhodiumTabBar::tab {
-            background: #161920;
-            color: #8b939f;
-            border: 1px solid #232830;
-            border-bottom: none;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-            padding: 0 12px 0 10px;
-            margin-top: 3px;
-            margin-right: 5px;
-            min-width: 96px;
-            max-width: 210px;
-            min-height: 32px;
-            max-height: 32px;
+            min-height: 38px;
+            max-height: 38px;
             font-size: 12px;
             font-weight: 500;
         }
 
+        QTabBar#RhodiumTabBar::tab {
+            background: transparent;
+            color: #8b939f;
+            border: none;
+            border-radius: 8px;
+            padding: 0 6px;
+            margin-top: 4px;
+            margin-bottom: 4px;
+            margin-right: 2px;
+            min-width: 110px;
+            max-width: 220px;
+            min-height: 30px;
+            max-height: 30px;
+        }
+
         QTabBar#RhodiumTabBar::tab:hover {
-            background: #1d222b;
+            background: #1a1f27;
             color: #c8ced8;
-            border-color: #2d343f;
         }
 
         QTabBar#RhodiumTabBar::tab:selected {
-            background: #0b0d10;
+            background: #2b323d;
             color: #eef1f5;
-            border-color: #2a313c;
-            border-bottom: 2px solid #0b0d10;
-            margin-top: 1px;
-            min-height: 34px;
-            max-height: 34px;
         }
 
         QTabBar#RhodiumTabBar::close-button {
@@ -200,45 +185,35 @@ def get_stylesheet() -> str:
         }
 
         QTabBar#RhodiumTabBar QToolButton {
-            background: #181c23;
-            border: 1px solid #252b34;
-            border-radius: 8px;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
             color: #9aa3b0;
-            margin: 6px 4px 8px 4px;
-            padding: 4px 6px;
-            min-width: 22px;
-            max-width: 22px;
+            margin: 4px 2px;
+            min-width: 20px;
+            max-width: 20px;
         }
 
         QTabBar#RhodiumTabBar QToolButton:hover {
-            background: #242a33;
+            background: #1a1f27;
             color: #eef1f5;
-            border-color: #333b47;
         }
 
         QToolButton#NewTabButton {
-            background: #181c23;
-            border: 1px solid #252b34;
-            border-radius: 8px;
-            padding: 6px;
-            margin-left: 2px;
-            margin-top: 6px;
-            margin-right: 4px;
+            background: transparent;
+            border: none;
+            border-radius: 14px;
+            padding: 0;
+            margin-top: 5px;
             color: #9aa3b0;
-            min-width: 28px;
-            max-width: 28px;
-            min-height: 28px;
-            max-height: 28px;
         }
 
         QToolButton#NewTabButton:hover {
-            background: #242a33;
-            color: #eef1f5;
-            border-color: #333b47;
+            background: #1a1f27;
         }
 
         QToolButton#NewTabButton:pressed {
-            background: #2d343f;
+            background: #242a33;
         }
 
 
