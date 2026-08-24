@@ -4,9 +4,13 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage
 
 class RhodiumWebEnginePage(QWebEnginePage):
-    def __init__(self, browser_window, parent=None):
+    def __init__(self, browser_window, view=None, parent=None):
         super().__init__(parent)
         self.browser_window = browser_window
+        self._view = view if view is not None else parent
+
+    def view(self):
+        return self._view
 
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):
         url_str = url.toString()
@@ -19,7 +23,21 @@ class RhodiumWebEnginePage(QWebEnginePage):
             target_url = url_str.split("rhodium://retry?url=")[1]
             decoded_url = urllib.parse.unquote(target_url)
             # Find the view associated with this page and reload/load the original URL
-            self.view().setUrl(QUrl(decoded_url))
+            if self._view is not None:
+                self._view.setUrl(QUrl(decoded_url))
+            return False
+        elif url_str.startswith("rhodium://download-action?"):
+            params = urllib.parse.parse_qs(url.query())
+            download_id = int(params.get("id", ["-1"])[0])
+            action = params.get("action", [""])[0]
+            self.browser_window.handle_download_action(download_id, action)
+            return False
+        elif url_str.startswith("rhodium://downloads-clear"):
+            self.browser_window.clear_download_history()
+            return False
+        elif url_str.split("?")[0] == "rhodium://downloads":
+            if self._view is not None:
+                self.browser_window.show_downloads_in_view(self._view)
             return False
         elif url_str.startswith("rhodium://add-shortcut"):
             self.browser_window.add_shortcut_dialog()

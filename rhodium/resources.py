@@ -218,6 +218,144 @@ def get_stylesheet() -> str:
 
 
         /* =========================================================
+        DOWNLOADS
+        ========================================================= */
+
+        QToolButton#DownloadButton {
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            padding: 0;
+            margin: 0 2px;
+        }
+
+        QToolButton#DownloadButton:hover {
+            background: #1a1f27;
+        }
+
+        QToolButton#DownloadButton:pressed {
+            background: #242a33;
+        }
+
+        QFrame#DownloadPopup {
+            background: #14171d;
+            border: 1px solid #2a313c;
+            border-radius: 12px;
+        }
+
+        QFrame#DownloadPanel {
+            background: #14171d;
+            border: 1px solid #2a313c;
+            border-radius: 12px;
+        }
+
+        QLabel#PopupHeader {
+            color: #eef1f5;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 12px 14px 10px 14px;
+        }
+
+        QFrame#PanelDivider {
+            background: #232933;
+            border: none;
+        }
+
+        QFrame#DownloadPopupItem {
+            background: #181c23;
+            border: 1px solid #252b34;
+            border-radius: 10px;
+        }
+
+        QFrame#DownloadPopupItem:hover {
+            border-color: #333b47;
+        }
+
+        QFrame#DownloadMenuRow {
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+        }
+
+        QFrame#DownloadMenuRow:hover {
+            background: #1d222b;
+        }
+
+        QLabel#DownloadItemIcon {
+            font-size: 15px;
+            background: #222730;
+            border-radius: 6px;
+        }
+
+        QLabel#DownloadItemName {
+            color: #eef1f5;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        QLabel#DownloadItemStatus {
+            color: #8b939f;
+            font-size: 11px;
+        }
+
+        QLabel#DownloadItemSpeed {
+            color: #6f7887;
+            font-size: 11px;
+        }
+
+        QProgressBar#DownloadProgressBar {
+            background: #222730;
+            border: none;
+            border-radius: 2px;
+        }
+
+        QProgressBar#DownloadProgressBar::chunk {
+            background: #4c8dff;
+            border-radius: 2px;
+        }
+
+        QToolButton#DownloadMiniBtn {
+            background: #242932;
+            color: #d5dae3;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+
+        QToolButton#DownloadMiniBtn:hover {
+            background: #2e3540;
+            color: #ffffff;
+        }
+
+        QToolButton#DownloadMiniBtn:pressed {
+            background: #37404e;
+        }
+
+        QLabel#PanelFooter {
+            color: #8ab4f8;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 11px;
+            border-top: 1px solid #232933;
+        }
+
+        QLabel#PanelFooter:hover {
+            background: #1d222b;
+        }
+
+        QLabel#DownloadEmpty {
+            color: #636b78;
+            font-size: 12px;
+            padding: 24px;
+        }
+
+        QScrollArea#DownloadScroll {
+            background: transparent;
+            border: none;
+        }
+
+
+        /* =========================================================
         STATUS BAR
         ========================================================= */
 
@@ -1428,5 +1566,247 @@ def get_offline_page_html(failed_url="") -> str:
 
     </script>
 
+</body>
+</html>"""
+
+
+def get_downloads_page_html(downloads_json: str = "[]") -> str:
+    """Generate the rhodium://downloads internal page."""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Downloads — Rhodium</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+    background: #0b0d10;
+    color: #e8eaed;
+    font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+}}
+.page {{ max-width: 920px; margin: 0 auto; padding: 32px 24px 48px; }}
+.header {{
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+}}
+.header h1 {{ font-size: 24px; font-weight: 600; letter-spacing: -.02em; }}
+.header-actions {{ display: flex; gap: 10px; align-items: center; flex: 1; justify-content: flex-end; }}
+.search {{
+    background: #181b21; border: 1px solid #2b2f36; border-radius: 9px;
+    color: #e1e4e8; padding: 8px 12px; font-size: 13px; width: min(280px, 100%);
+    outline: none;
+}}
+.search:focus {{ border-color: #426cae; }}
+.btn {{
+    background: #1b1e24; color: #c6cad1; border: 1px solid #2b2f36;
+    border-radius: 7px; padding: 8px 14px; font-size: 12px; cursor: pointer;
+}}
+.btn:hover {{ background: #252930; color: #fff; }}
+.btn-danger:hover {{ background: #4a2020; border-color: #6b3030; }}
+.section {{ margin-bottom: 28px; }}
+.section-title {{
+    font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: #747b86; margin-bottom: 10px;
+}}
+.list {{ display: flex; flex-direction: column; gap: 8px; }}
+.item {{
+    background: #14171d; border: 1px solid #252b34; border-radius: 10px;
+    padding: 14px 16px; display: grid; grid-template-columns: 36px 1fr auto;
+    gap: 12px; align-items: start; transition: border-color .15s;
+}}
+.item:hover {{ border-color: #353d49; }}
+.item.executable {{ border-left: 3px solid #e8a045; }}
+.icon {{
+    width: 32px; height: 32px; border-radius: 8px;
+    background: #222730; display: grid; place-items: center; font-size: 16px;
+}}
+.meta {{ min-width: 0; }}
+.name {{
+    font-size: 13px; font-weight: 600; color: #eef1f5;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}}
+.status {{ font-size: 11px; color: #8b939f; margin-top: 3px; }}
+.details {{ font-size: 10px; color: #636b78; margin-top: 4px; word-break: break-all; }}
+.progress-wrap {{ margin-top: 8px; }}
+.progress {{
+    height: 4px; background: #222730; border-radius: 2px; overflow: hidden;
+}}
+.progress-bar {{
+    height: 100%; background: #4c8dff; border-radius: 2px;
+    transition: width .2s ease;
+}}
+.progress-text {{ font-size: 10px; color: #727a87; margin-top: 4px; }}
+.actions {{ display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }}
+.action {{
+    background: #242932; color: #d5dae3; border: none; border-radius: 6px;
+    padding: 5px 10px; font-size: 11px; cursor: pointer;
+}}
+.action:hover {{ background: #2e3540; color: #fff; }}
+.action.primary {{ background: #315f9d; color: #fff; }}
+.action.primary:hover {{ background: #3b6fae; }}
+.empty {{
+    text-align: center; color: #636b78; padding: 40px 20px; font-size: 13px;
+}}
+</style>
+</head>
+<body>
+<div class="page">
+    <div class="header">
+        <h1>Downloads</h1>
+        <div class="header-actions">
+            <input type="search" class="search" id="search" placeholder="Search downloads…">
+            <button class="btn btn-danger" id="clear-btn">Clear</button>
+        </div>
+    </div>
+    <div class="section" id="active-section" style="display:none">
+        <div class="section-title">Active downloads</div>
+        <div class="list" id="active-list"></div>
+    </div>
+    <div class="section">
+        <div class="section-title" id="recent-title">Recent downloads</div>
+        <div class="list" id="recent-list"></div>
+        <div class="empty" id="empty-msg" style="display:none">No downloads yet</div>
+    </div>
+</div>
+<script>
+const ALL_DOWNLOADS = {downloads_json};
+
+function fmtBytes(v) {{
+    if (v == null || v < 0) return 'Unknown';
+    const u = ['B','KB','MB','GB','TB'];
+    let s = Number(v);
+    for (const unit of u) {{
+        if (s < 1024) return unit === 'B' ? Math.round(s)+' '+unit : s.toFixed(1)+' '+unit;
+        s /= 1024;
+    }}
+    return s.toFixed(1)+' PB';
+}}
+
+function fmtStatus(d) {{
+    const s = (d.status || '').toUpperCase();
+    if (s === 'COMPLETED' && d.total_size > 0) return 'Completed — '+fmtBytes(d.total_size);
+    const map = {{
+        QUEUED:'Starting…', DOWNLOADING:'Downloading…', PAUSED:'Paused',
+        COMPLETED:'Completed', FAILED:'Failed', CANCELLED:'Cancelled', INTERRUPTED:'Interrupted'
+    }};
+    return map[s] || s;
+}}
+
+function iconFor(name) {{
+    const n = (name || '').toLowerCase();
+    if (/\.(exe|msi|msix|msp|bat|cmd|ps1|scr|jar)$/.test(n)) return '⚙️';
+    if (/\.(zip|rar|7z|tar|gz|bz2|xz|iso)$/.test(n)) return '📦';
+    if (/\.pdf$/.test(n)) return '📕';
+    if (/\.(mp3|wav|flac|ogg|m4a)$/.test(n)) return '🎵';
+    if (/\.(mp4|mkv|avi|mov|webm)$/.test(n)) return '🎬';
+    if (/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/.test(n)) return '🖼️';
+    if (/\.(doc|docx|txt|rtf|odt)$/.test(n)) return '📝';
+    if (/\.(xls|xlsx|csv|ods)$/.test(n)) return '📊';
+    if (/\.(ppt|pptx|odp)$/.test(n)) return '📽️';
+    if (/\.(py|js|html|css|json|xml|ts)$/.test(n)) return '📜';
+    return '📄';
+}}
+
+function actionUrl(id, action) {{
+    return 'rhodium://download-action?id='+id+'&action='+action;
+}}
+
+function renderItem(d) {{
+    const active = ['QUEUED','DOWNLOADING','PAUSED'].includes((d.status||'').toUpperCase());
+    const pct = d.total_size > 0 ? Math.min(100, Math.round(d.downloaded_size*100/d.total_size)) : 0;
+    let actions = '';
+    const s = (d.status||'').toUpperCase();
+    if (s === 'COMPLETED') {{
+        actions += '<button class="action primary" data-href="'+actionUrl(d.id,'open')+'">Open</button>';
+        actions += '<button class="action" data-href="'+actionUrl(d.id,'folder')+'">Show in folder</button>';
+    }}
+    if (['FAILED','CANCELLED','INTERRUPTED'].includes(s))
+        actions += '<button class="action primary" data-href="'+actionUrl(d.id,'retry')+'">Retry</button>';
+    if (active) {{
+        if (s === 'PAUSED')
+            actions += '<button class="action" data-href="'+actionUrl(d.id,'resume')+'">Resume</button>';
+        else
+            actions += '<button class="action" data-href="'+actionUrl(d.id,'pause')+'">Pause</button>';
+        actions += '<button class="action" data-href="'+actionUrl(d.id,'cancel')+'">Cancel</button>';
+    }}
+    actions += '<button class="action" data-href="'+actionUrl(d.id,'remove')+'">Remove</button>';
+    if (s === 'COMPLETED')
+        actions += '<button class="action" data-href="'+actionUrl(d.id,'delete')+'">Delete file</button>';
+
+    let progress = '';
+    if (active) {{
+        const progText = d.total_size > 0
+            ? fmtBytes(d.downloaded_size)+' / '+fmtBytes(d.total_size)+' · '+pct+'%'
+            : fmtBytes(d.downloaded_size)+' · Downloading…';
+        progress = '<div class="progress-wrap"><div class="progress"><div class="progress-bar" style="width:'+pct+'%"></div></div>'
+                 + '<div class="progress-text">'+progText+'</div></div>';
+    }}
+
+    const execClass = d.executable ? ' executable' : '';
+    const date = d.completed_at || d.created_at || '';
+    const loc = d.path ? String(d.path).replace(/\\/g,'/').split('/').slice(0,-1).join('/') : '';
+
+    return '<div class="item'+execClass+'" data-id="'+d.id+'">'
+        + '<div class="icon">'+iconFor(d.filename)+'</div>'
+        + '<div class="meta"><div class="name" title="'+d.filename+'">'+d.filename+'</div>'
+        + '<div class="status">'+fmtStatus(d)+(d.error_message ? ' — '+d.error_message : '')+'</div>'
+        + '<div class="details">'+date+(loc ? ' · '+loc : '')+'</div>'
+        + progress + '</div>'
+        + '<div class="actions">'+actions+'</div></div>';
+}}
+
+function render(list) {{
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    let items = list;
+    if (q) {{
+        items = list.filter(d =>
+            (d.filename||'').toLowerCase().includes(q) ||
+            (d.url||'').toLowerCase().includes(q) ||
+            (d.status||'').toLowerCase().includes(q) ||
+            (d.mime_type||'').toLowerCase().includes(q)
+        );
+    }}
+    const active = items.filter(d => ['QUEUED','DOWNLOADING','PAUSED'].includes((d.status||'').toUpperCase()));
+    const recent = items.filter(d => !['QUEUED','DOWNLOADING','PAUSED'].includes((d.status||'').toUpperCase()));
+
+    const activeSec = document.getElementById('active-section');
+    const activeList = document.getElementById('active-list');
+    activeList.innerHTML = active.map(renderItem).join('');
+    activeSec.style.display = active.length ? 'block' : 'none';
+
+    const recentList = document.getElementById('recent-list');
+    recentList.innerHTML = recent.map(renderItem).join('');
+    document.getElementById('empty-msg').style.display = items.length ? 'none' : 'block';
+    document.getElementById('recent-title').textContent =
+        active.length ? 'Recent downloads' : 'Downloads';
+
+    document.querySelectorAll('[data-href]').forEach(el => {{
+        el.addEventListener('click', e => {{
+            e.preventDefault();
+            window.location.href = el.dataset.href;
+        }});
+    }});
+
+    document.querySelectorAll('.item').forEach(el => {{
+        el.addEventListener('click', e => {{
+            if (e.target.closest('.actions')) return;
+            const id = el.dataset.id;
+            const d = list.find(x => String(x.id) === String(id));
+            if (!d) return;
+            const s = (d.status||'').toUpperCase();
+            if (s === 'COMPLETED') window.location.href = actionUrl(id, 'open');
+        }});
+    }});
+}}
+
+document.getElementById('search').addEventListener('input', () => render(ALL_DOWNLOADS));
+document.getElementById('clear-btn').addEventListener('click', () => {{
+    window.location.href = 'rhodium://downloads-clear';
+}});
+
+render(ALL_DOWNLOADS);
+</script>
 </body>
 </html>"""

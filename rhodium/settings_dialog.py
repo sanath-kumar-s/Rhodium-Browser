@@ -1,8 +1,9 @@
 import ctypes
+from pathlib import Path
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QFormLayout, QLineEdit, 
-    QCheckBox, QSpinBox, QComboBox, QHBoxLayout, QPushButton, 
-    QMessageBox
+    QDialog, QVBoxLayout, QLabel, QFormLayout, QLineEdit,
+    QCheckBox, QSpinBox, QComboBox, QHBoxLayout, QPushButton,
+    QMessageBox, QFileDialog, QWidget
 )
 from PyQt6.QtCore import Qt
 from rhodium.utils import icon
@@ -34,6 +35,23 @@ class SettingsDialog(QDialog):
         self.home_page_input = QLineEdit()
         self.home_page_input.setText(self.parent_browser.settings.get("home_page", "about:home"))
         form_layout.addRow("Home Page:", self.home_page_input)
+
+        self.download_dir = QLineEdit()
+        self.download_dir.setText(self.parent_browser.settings.get(
+            "download_dir", str(Path.home() / "Downloads")))
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self.browse_download_dir)
+        download_row = QHBoxLayout()
+        download_row.setSpacing(8)
+        download_row.addWidget(self.download_dir, 1)
+        download_row.addWidget(browse_btn)
+        download_container = QWidget()
+        download_container.setLayout(download_row)
+        form_layout.addRow("Download Directory:", download_container)
+
+        self.ask_save_check = QCheckBox("Ask where to save each download")
+        self.ask_save_check.setChecked(self.parent_browser.settings.get("ask_where_to_save", False))
+        form_layout.addRow("", self.ask_save_check)
 
         self.javascript_check = QCheckBox("Enable JavaScript")
         self.javascript_check.setChecked(self.parent_browser.settings.get("javascript_enabled", True))
@@ -79,9 +97,17 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(btn_layout)
 
+    def browse_download_dir(self):
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Select Download Directory", self.download_dir.text() or str(Path.home()))
+        if chosen:
+            self.download_dir.setText(chosen)
+
     def save_settings(self):
         settings = {
             "home_page": self.home_page_input.text(),
+            "download_dir": self.download_dir.text(),
+            "ask_where_to_save": self.ask_save_check.isChecked(),
             "javascript_enabled": self.javascript_check.isChecked(),
             "local_storage_enabled": self.local_storage_check.isChecked(),
             "cookies_enabled": self.cookies_check.isChecked(),
@@ -97,6 +123,8 @@ class SettingsDialog(QDialog):
 
     def reset_settings(self):
         self.home_page_input.setText("about:home")
+        self.download_dir.setText(str(Path.home() / "Downloads"))
+        self.ask_save_check.setChecked(False)
         self.javascript_check.setChecked(True)
         self.local_storage_check.setChecked(True)
         self.cookies_check.setChecked(True)

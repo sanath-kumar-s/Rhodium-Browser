@@ -21,10 +21,12 @@ from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 
 from rhodium.utils import icon
-from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html
+from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html, get_downloads_page_html
 from rhodium.settings_dialog import SettingsDialog
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
+from rhodium.download_manager import DownloadManager
+from rhodium.download_ui import DownloadToolbarButton
 
 
 class RhodiumTabWidget(QWidget):
@@ -148,6 +150,8 @@ class AdvancedBrowser(QMainWindow):
         self.shortcuts_file = self.config_dir / "shortcuts.json"
         self.shortcuts = self.load_shortcuts()
 
+        self.download_manager = DownloadManager(self)
+
         self.setMenuBar(None)          # No old-style menu bar
         self.init_ui()
         self.apply_global_settings()
@@ -226,6 +230,7 @@ class AdvancedBrowser(QMainWindow):
         self._add_shortcut("Ctrl+L",       self.url_bar.setFocus)
         self._add_shortcut("Ctrl+F",       self.open_find_dialog)
         self._add_shortcut("Ctrl+D",       self.add_bookmark)
+        self._add_shortcut("Ctrl+J",       self.open_downloads_page)
         self._add_shortcut("Ctrl+,",       self.open_settings)
         self._add_shortcut("Ctrl+N",       self.open_new_window)
         self._add_shortcut("Ctrl+Q",       self.close)
@@ -337,6 +342,13 @@ class AdvancedBrowser(QMainWindow):
         self.btn_history.setMenu(self.create_history_menu())
         bar.addWidget(self.btn_history)
 
+        # DOWNLOADS
+        self.btn_download = DownloadToolbarButton(
+            self.download_manager,
+            show_all_callback=lambda: self.load_url("rhodium://downloads")
+        )
+        bar.addWidget(self.btn_download)
+
         # MENU
         self.btn_menu = QPushButton()
         self.btn_menu.setObjectName("NavBtn")
@@ -440,6 +452,7 @@ class AdvancedBrowser(QMainWindow):
         m.addSeparator()
 
         m.addSection("Tools")
+        m.addAction(icon("download.png"),  "Downloads",         self.open_downloads_page).setShortcut(QKeySequence("Ctrl+J"))
         m.addAction(icon("settings.png"),  "Settings",          self.open_settings).setShortcut(QKeySequence("Ctrl+,"))
         m.addAction(icon("delete.png"),    "Clear Browsing Data", self.clear_browsing_data_prompt)
         m.addAction(icon("developer.png"), "Developer Tools",   self.open_dev_tools_info).setShortcut(QKeySequence("F12"))
@@ -485,7 +498,7 @@ class AdvancedBrowser(QMainWindow):
             url = self.settings.get("home_page", "about:home")
 
         view = SmoothWebEngineView()
-        page = RhodiumWebEnginePage(self, view)
+        page = RhodiumWebEnginePage(self, view, view)
         view.setPage(page)
 
         view.setZoomFactor(self.settings.get("default_zoom", 100) / 100.0)
@@ -503,6 +516,8 @@ class AdvancedBrowser(QMainWindow):
 
         if url in ("about:home", "rhodium://home", "about:blank", ""):
             view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+        elif url.split("?")[0] == "rhodium://downloads":
+            self.show_downloads_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -540,6 +555,8 @@ class AdvancedBrowser(QMainWindow):
             return
         if url in ("about:home", "rhodium://home"):
             view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+        elif url.split("?")[0] == "rhodium://downloads":
+            self.show_downloads_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -549,8 +566,57 @@ class AdvancedBrowser(QMainWindow):
             return
         if url in ("about:home", "rhodium://home"):
             view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+        elif url.split("?")[0] == "rhodium://downloads":
+            self.show_downloads_in_view(view)
         else:
             self._load_in_view(url, view)
+
+    def open_downloads_page(self):
+        self.load_url("rhodium://downloads")
+
+    def show_downloads_in_view(self, view):
+        """Render the internal rhodium://downloads page in a tab."""
+        html = get_downloads_page_html(self.download_manager.get_page_data_json())
+        view.setHtml(html, QUrl("rhodium://downloads"))
+        idx = self.tab_widget.indexOf(view)
+        if idx >= 0:
+            self.tab_widget.setTabText(idx, "Downloads")
+            self.tab_widget.setTabToolTip(idx, "Downloads")
+            self.tab_widget.setTabIcon(idx, icon("download.png"))
+
+    def handle_download_action(self, download_id, action):
+        manager = self.download_manager
+        if action == "open":
+            manager.open_file(download_id)
+        elif action == "folder":
+            manager.show_in_folder(download_id)
+        elif action == "retry":
+            manager.retry(download_id)
+        elif action == "pause":
+            manager.pause(download_id)
+        elif action == "resume":
+            manager.resume(download_id)
+        elif action == "cancel":
+            manager.cancel(download_id)
+        elif action == "remove":
+            manager.remove(download_id)
+        elif action == "delete":
+            manager.remove(download_id, delete_file=True)
+        self.refresh_downloads_tabs()
+
+    def clear_download_history(self):
+        self.download_manager.clear_history()
+        self.refresh_downloads_tabs()
+        self.status_label.setText("Download history cleared.")
+
+    def refresh_downloads_tabs(self):
+        for i in range(self.tab_widget.count()):
+            view = self.tab_widget.widget(i)
+            if isinstance(view, QWebEngineView):
+                if view.url().toString().split("?")[0] == "rhodium://downloads":
+                    html = get_downloads_page_html(
+                        self.download_manager.get_page_data_json())
+                    view.setHtml(html, QUrl("rhodium://downloads"))
 
     def get_current_view(self):
         return self.tab_widget.currentWidget()
@@ -679,7 +745,7 @@ class AdvancedBrowser(QMainWindow):
         return []
 
     def add_to_history(self, url: str, title: str):
-        if not url or url.startswith(("about:", "data:")):
+        if not url or url.startswith(("about:", "data:", "rhodium:")):
             return
         if self.history and self.history[-1]["url"] == url:
             return
@@ -757,6 +823,8 @@ class AdvancedBrowser(QMainWindow):
             pass
         return {
             "home_page": "about:home",
+            "download_dir": str(Path.home() / "Downloads"),
+            "ask_where_to_save": False,
             "javascript_enabled": True,
             "local_storage_enabled": True,
             "cookies_enabled": True,
@@ -771,6 +839,14 @@ class AdvancedBrowser(QMainWindow):
 
     def apply_global_settings(self):
         profile = QWebEngineProfile.defaultProfile()
+        try:
+            profile.downloadRequested.disconnect()
+        except TypeError:
+            pass
+
+        profile.downloadRequested.connect(
+            self.download_manager.on_download_requested
+        )
         profile.setHttpCacheType(
             QWebEngineProfile.HttpCacheType.DiskHttpCache
             if self.settings.get("cache_enabled", True)
@@ -865,6 +941,7 @@ class AdvancedBrowser(QMainWindow):
             "Ctrl+F    Find in Page",
             "Ctrl+G    Find Next",
             "Ctrl+L    Focus URL Bar",
+            "Ctrl+J    Downloads",
             "Ctrl++    Zoom In",
             "Ctrl+-    Zoom Out",
             "Ctrl+0    Reset Zoom",
@@ -1039,6 +1116,9 @@ class AdvancedBrowser(QMainWindow):
         url_str = view.url().toString()
         if url_str in ("about:home", "rhodium://home", "about:blank", ""):
             self.tab_widget.setTabIcon(idx, icon("home.png"))
+            return
+        if url_str.split("?")[0] == "rhodium://downloads":
+            self.tab_widget.setTabIcon(idx, icon("download.png"))
             return
         if "google.com/search" in url_str:
             self.tab_widget.setTabIcon(idx, icon("search.png"))
