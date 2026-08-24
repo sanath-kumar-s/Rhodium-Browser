@@ -1,5 +1,8 @@
+import base64
+import html as html_module
 import urllib.parse
 import os
+from urllib.parse import urlparse
 
 def get_stylesheet() -> str:
     return """
@@ -125,161 +128,117 @@ def get_stylesheet() -> str:
         QTabWidget#BrowserTabs::pane {
             border: none;
             background: #0b0d10;
+            top: -1px;
         }
 
         QTabWidget#BrowserTabs::tab-bar {
             alignment: left;
+            left: 0;
         }
 
-
-        /* TAB BAR */
-
-        QTabBar {
-            background: #111318;
-
+        QTabBar#RhodiumTabBar {
+            background: #0e1014;
+            border: none;
+            border-bottom: 1px solid #1c2129;
+            padding: 6px 10px 0 10px;
             qproperty-drawBase: 0;
-
-            border: none;
-
-            min-height: 38px;
-            max-height: 38px;
+            min-height: 42px;
+            max-height: 42px;
         }
 
+        QTabBar#RhodiumTabBar::tab {
+            background: #161920;
+            color: #8b939f;
+            border: 1px solid #232830;
+            border-bottom: none;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            padding: 0 12px 0 10px;
+            margin-top: 3px;
+            margin-right: 5px;
+            min-width: 96px;
+            max-width: 210px;
+            min-height: 32px;
+            max-height: 32px;
+            font-size: 12px;
+            font-weight: 500;
+        }
 
-        /* INDIVIDUAL TAB */
+        QTabBar#RhodiumTabBar::tab:hover {
+            background: #1d222b;
+            color: #c8ced8;
+            border-color: #2d343f;
+        }
 
-        QTabBar::tab {
-            background: #111318;
-
-            color: #858c97;
-
-            border: none;
-            border-top-left-radius: 9px;
-            border-top-right-radius: 9px;
-
-            padding: 0px 12px;
-
-            margin-top: 4px;
-            margin-right: 2px;
-
-            min-width: 150px;
-            max-width: 220px;
-
+        QTabBar#RhodiumTabBar::tab:selected {
+            background: #0b0d10;
+            color: #eef1f5;
+            border-color: #2a313c;
+            border-bottom: 2px solid #0b0d10;
+            margin-top: 1px;
             min-height: 34px;
             max-height: 34px;
-
-            font-size: 12px;
         }
 
-
-        /* HOVERED TAB */
-
-        QTabBar::tab:hover {
-            background: #191d23;
-            color: #cbd0d8;
-        }
-
-
-        /* ACTIVE TAB */
-
-        QTabBar::tab:selected {
-            background: #0b0d10;
-
-            color: #f1f3f6;
-
-            border-top: 1px solid #2d3540;
-            border-left: 1px solid #252b33;
-            border-right: 1px solid #252b33;
-
-            margin-top: 2px;
-
-            min-height: 36px;
-            max-height: 36px;
-        }
-
-
-        /* Active tab bottom accent */
-
-        QTabBar::tab:selected {
-            border-bottom: 2px solid #4c78b5;
-        }
-
-
-        /* =========================================================
-        TAB CLOSE BUTTON
-        ========================================================= */
-
-        QTabBar::close-button {
+        QTabBar#RhodiumTabBar::close-button {
             image: url(style/icons/close (2).png);
-
-            width: 18px;
-            height: 18px;
-
+            width: 16px;
+            height: 16px;
             subcontrol-position: right;
-
-            margin-left: 1px;
-            margin-right: 1px;
-
-            border-radius: 5px;
+            margin-left: 6px;
+            margin-right: 2px;
+            border-radius: 4px;
+            padding: 2px;
         }
 
-        QTabBar::close-button:hover {
-            background: #2a2f37;
+        QTabBar#RhodiumTabBar::close-button:hover {
+            background: #2a3039;
         }
 
-        QTabBar::close-button:pressed {
-            background: #353b44;
+        QTabBar#RhodiumTabBar::close-button:pressed {
+            background: #353c47;
         }
 
+        QTabBar#RhodiumTabBar QToolButton {
+            background: #181c23;
+            border: 1px solid #252b34;
+            border-radius: 8px;
+            color: #9aa3b0;
+            margin: 6px 4px 8px 4px;
+            padding: 4px 6px;
+            min-width: 22px;
+            max-width: 22px;
+        }
 
-        /* =========================================================
-        NEW TAB BUTTON
-        ========================================================= */
+        QTabBar#RhodiumTabBar QToolButton:hover {
+            background: #242a33;
+            color: #eef1f5;
+            border-color: #333b47;
+        }
 
         QToolButton#NewTabButton {
-            background: transparent;
-
-            border: none;
+            background: #181c23;
+            border: 1px solid #252b34;
             border-radius: 8px;
-
             padding: 6px;
-
-            margin-left: 4px;
-            margin-top: 3px;
-
-            color: #8e96a2;
+            margin-left: 2px;
+            margin-top: 6px;
+            margin-right: 4px;
+            color: #9aa3b0;
+            min-width: 28px;
+            max-width: 28px;
+            min-height: 28px;
+            max-height: 28px;
         }
 
         QToolButton#NewTabButton:hover {
-            background: #1d2128;
-            color: #e7eaf0;
+            background: #242a33;
+            color: #eef1f5;
+            border-color: #333b47;
         }
 
         QToolButton#NewTabButton:pressed {
-            background: #282d35;
-        }
-
-
-        /* =========================================================
-        TAB SCROLL BUTTONS
-        ========================================================= */
-
-        QTabBar QToolButton {
-            background: #15181d;
-
-            border: none;
-            border-radius: 6px;
-
-            color: #9da4ae;
-
-            margin: 5px 3px;
-
-            padding: 4px;
-        }
-
-        QTabBar QToolButton:hover {
-            background: #242930;
-            color: #ffffff;
+            background: #2d343f;
         }
 
 
@@ -602,670 +561,544 @@ def get_stylesheet() -> str:
         }
         """
 
+def _shortcut_icon_html(shortcut: dict, fallback_icon: str) -> str:
+    """Build a shortcut icon img tag. Uses base64 for local files because QWebEngine blocks file:// in setHtml()."""
+    fav_path = shortcut.get("favicon", "")
+    if fav_path and os.path.exists(fav_path):
+        try:
+            with open(fav_path, "rb") as handle:
+                data = handle.read()
+            ext = os.path.splitext(fav_path)[1].lower()
+            mime = {
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+                ".ico": "image/x-icon",
+            }.get(ext, "image/png")
+            encoded = base64.b64encode(data).decode("ascii")
+            return f'<img src="data:{mime};base64,{encoded}" alt="" class="shortcut-favicon" />'
+        except OSError:
+            pass
+
+    url = shortcut.get("url", "")
+    domain = urlparse(url).netloc
+    if domain:
+        remote = html_module.escape(
+            f"https://www.google.com/s2/favicons?sz=64&domain={domain}",
+            quote=True,
+        )
+        return f'<img src="{remote}" alt="" class="shortcut-favicon" />'
+
+    return fallback_icon
+
+
 def get_home_page_html(shortcuts=None) -> str:
     if shortcuts is None:
         shortcuts = []
 
+    fallback_icon = """
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M3 12h18"/>
+            <path d="M12 3c2.8 2.6 4.2 5.7 4.2 9s-1.4 6.4-4.2 9"/>
+            <path d="M12 3C9.2 5.6 7.8 8.7 7.8 12s1.4 6.4 4.2 9"/>
+        </svg>
+    """
+
     shortcuts_html = ""
     for s in shortcuts:
-        name = s.get("name", "Shortcut")
+        name = html_module.escape(s.get("name", "Shortcut"))
         url = s.get("url", "#")
-        fav_path = s.get("favicon", "")
-        
-        icon_element = ""
-        if fav_path and os.path.exists(fav_path):
-            img_url = "file:///" + fav_path.replace("\\", "/")
-            icon_element = f'<img src="{img_url}" style="width: 22px; height: 22px; border-radius: 4px; object-fit: contain;" />'
-        else:
-            icon_element = """
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width: 22px; height: 22px;">
-                            <circle cx="12" cy="12" r="10"/>
-                            <line x1="2" y1="12" x2="22" y2="12"/>
-                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-                        </svg>
-            """
-            
+        url_attr = html_module.escape(url, quote=True)
+        edit_href = html_module.escape(
+            f"rhodium://edit-shortcut?url={urllib.parse.quote(url, safe='')}",
+            quote=True,
+        )
+        delete_href = html_module.escape(
+            f"rhodium://delete-shortcut?url={urllib.parse.quote(url, safe='')}",
+            quote=True,
+        )
+        icon_element = _shortcut_icon_html(s, fallback_icon)
+
         shortcuts_html += f"""
-                <div class="shortcut-wrapper" style="position: relative; display: inline-block;">
-                    <div class="shortcut" onclick="nav('{url}')">
-                        <div class="shortcut-button">
-                            {icon_element}
-                        </div>
-                        <span>{name}</span>
-                    </div>
-                    <div class="shortcut-actions" style="position: absolute; top: -5px; right: 0px; display: none; gap: 4px; background: #1f232a; border-radius: 6px; border: 1px solid #333333; padding: 2px; z-index: 10;">
-                        <span class="action-btn" onclick="event.stopPropagation(); window.location.href='rhodium://edit-shortcut?url={urllib.parse.quote(url)}'" style="cursor: pointer; padding: 2px 4px; font-size: 11px; color: #aaa;">✏️</span>
-                        <span class="action-btn" onclick="event.stopPropagation(); window.location.href='rhodium://delete-shortcut?url={urllib.parse.quote(url)}'" style="cursor: pointer; padding: 2px 4px; font-size: 11px; color: #f44;">×</span>
-                    </div>
+            <article class="shortcut-card" data-url="{url_attr}">
+                <button type="button" class="shortcut-main" aria-label="Open {name}">
+                    <span class="shortcut-icon">{icon_element}</span>
+                    <span class="shortcut-label">{name}</span>
+                </button>
+                <div class="shortcut-actions">
+                    <button type="button" class="shortcut-action edit" data-href="{edit_href}" title="Edit">Edit</button>
+                    <button type="button" class="shortcut-action delete" data-href="{delete_href}" title="Remove">Remove</button>
                 </div>
+            </article>
         """
 
     shortcuts_html += """
-                <div class="shortcut add" onclick="window.location.href='rhodium://add-shortcut'">
-                    <div class="shortcut-button">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="width: 22px; height: 22px;">
-                            <path d="M12 5v14"/>
-                            <path d="M5 12h14"/>
-                        </svg>
-                    </div>
-                    <span>Add</span>
-                </div>
+        <button type="button" class="shortcut-card add" id="add-shortcut">
+            <span class="shortcut-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                     stroke-linecap="round" aria-hidden="true">
+                    <path d="M12 5v14"/>
+                    <path d="M5 12h14"/>
+                </svg>
+            </span>
+            <span class="shortcut-label">Add shortcut</span>
+        </button>
     """
 
     return f"""<!DOCTYPE html>
-        <html lang="en">
-        <head>
-        <meta charset="UTF-8">
-        <title>Rhodium</title>
-
-        <style>
-
-        * {{
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }}
-
-        html,
-        body {{
-            width: 100%;
-            height: 100%;
-        }}
-
-        body {{
-            background:
-                radial-gradient(
-                    circle at 50% 38%,
-                    rgba(55, 77, 110, 0.10) 0%,
-                    rgba(15, 17, 21, 0.04) 28%,
-                    transparent 52%
-                ),
-                #0b0c0f;
-
-            color: #e7e9ed;
-
-            font-family:
-                "Segoe UI",
-                Inter,
-                -apple-system,
-                BlinkMacSystemFont,
-                sans-serif;
-
-            display: flex;
-            justify-content: center;
-            align-items: center;
-
-            height: 100vh;
-
-            overflow: hidden;
-            user-select: none;
-
-        .container {{
-            width: 680px;
-            max-width: calc(100vw - 60px);
-
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-
-            transform: translateY(-28px);
-        }}
-
-        /* =========================================================
-        BRAND
-        ========================================================= */
-
-        .brand {{
-            display: flex;
-            align-items: center;
-            gap: 11px;
-
-            margin-bottom: 34px;
-
-            color: #e9ebef;
-
-            font-size: 25px;
-            font-weight: 600;
-            letter-spacing: -0.7px;
-        }}
-
-        .brand-mark {{
-            width: 38px;
-            height: 38px;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            border-radius: 10px;
-
-            background: linear-gradient(
-                145deg,
-                #26384f,
-                #172131
-            );
-
-            border: 1px solid #35485f;
-
-            box-shadow:
-                0 8px 25px rgba(0,0,0,.25);
-        }}
-
-        .brand-mark svg {{
-            width: 21px;
-            height: 21px;
-
-            stroke: #9cb7d8;
-        }}
-
-        /* =========================================================
-        SEARCH
-        ========================================================= */
-
-        .search {{
-            width: 100%;
-            height: 50px;
-
-            display: flex;
-            align-items: center;
-
-            background: #15171b;
-
-            border: 1px solid #2b2f36;
-            border-radius: 10px;
-
-            transition:
-                border-color .18s ease,
-                background .18s ease,
-                box-shadow .18s ease;
-        }}
-
-        .search:hover {{
-            background: #171a1f;
-            border-color: #363b44;
-        }}
-
-        .search:focus-within {{
-            background: #171a1f;
-            border-color: #466b9f;
-
-            box-shadow:
-                0 0 0 3px rgba(70,107,159,.10);
-        }}
-
-        .search-icon {{
-            width: 20px;
-            height: 20px;
-
-            margin-left: 17px;
-            margin-right: 12px;
-
-            color: #777e89;
-        }}
-
-        .search input {{
-            width: 100%;
-            height: 100%;
-
-            background: transparent;
-            border: none;
-            outline: none;
-
-            color: #e9ebef;
-
-            font-size: 14px;
-        }}
-
-        .search input::placeholder {{
-            color: #777d87;
-        }}
-
-        /* =========================================================
-        SHORTCUTS
-        ========================================================= */
-
-        .shortcuts {{
-            width: 100%;
-
-            display: flex;
-            justify-content: center;
-
-            gap: 8px;
-
-            margin-top: 28px;
-        }}
-
-        .shortcut {{
-            width: 76px;
-
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-
-            gap: 8px;
-
-            color: #777d87;
-
-            font-size: 11px;
-
-            text-decoration: none;
-
-            cursor: pointer;
-        }}
-
-        .shortcut-button {{
-            width: 42px;
-            height: 42px;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            background: #15171b;
-
-            border: 1px solid #282c33;
-            border-radius: 9px;
-
-            transition:
-                background .15s ease,
-                border-color .15s ease,
-                transform .15s ease;
-        }}
-
-        .shortcut-button svg {{
-            width: 18px;
-            height: 18px;
-
-            stroke: #8e96a1;
-        }}
-
-        .shortcut:hover {{
-            color: #cdd1d7;
-        }}
-
-        .shortcut:hover .shortcut-button {{
-            background: #1b1e23;
-            border-color: #3a4049;
-
-            transform: translateY(-2px);
-        }}
-
-        .shortcut:hover svg {{
-            stroke: #c5ccd5;
-        }}
-
-        /* ADD BUTTON */
-
-        .shortcut.add .shortcut-button {{
-            border-style: dashed;
-        }}
-
-        .shortcut.add svg {{
-            stroke: #666d77;
-        }}
-
-        /* =========================================================
-        FOOTER
-        ========================================================= */
-
-        .footer {{
-            margin-top: 34px;
-
-            color: #4f555e;
-
-            font-size: 10px;
-            letter-spacing: .2px;
-        }}
-
-        </style>
-        </head>
-
-        <body>
-
-        <div class="container">
-
-            <!-- BRAND -->
-
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rhodium</title>
+<style>
+* {{
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}}
+
+html, body {{
+    width: 100%;
+    height: 100%;
+}}
+
+body {{
+    position: relative;
+    overflow: hidden;
+    color: #eef1f6;
+    font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #07080b;
+    user-select: none;
+}}
+
+.bg {{
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}}
+
+.bg-grid {{
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(circle at 50% 42%, black 0%, transparent 72%);
+    opacity: .55;
+}}
+
+.bg-orb {{
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: .55;
+    animation: drift 18s ease-in-out infinite alternate;
+}}
+
+.bg-orb.one {{
+    width: 420px;
+    height: 420px;
+    top: -120px;
+    left: 18%;
+    background: radial-gradient(circle, rgba(88, 118, 168, .35), transparent 70%);
+}}
+
+.bg-orb.two {{
+    width: 360px;
+    height: 360px;
+    bottom: -80px;
+    right: 12%;
+    background: radial-gradient(circle, rgba(120, 132, 156, .22), transparent 70%);
+    animation-delay: -6s;
+}}
+
+.bg-orb.three {{
+    width: 280px;
+    height: 280px;
+    top: 38%;
+    left: 58%;
+    background: radial-gradient(circle, rgba(70, 107, 159, .18), transparent 70%);
+    animation-delay: -12s;
+}}
+
+@keyframes drift {{
+    from {{ transform: translate3d(0, 0, 0) scale(1); }}
+    to   {{ transform: translate3d(24px, -18px, 0) scale(1.08); }}
+}}
+
+.page {{
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px 64px;
+}}
+
+.shell {{
+    width: min(760px, calc(100vw - 48px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: rise .55s cubic-bezier(.22, 1, .36, 1) both;
+}}
+
+@keyframes rise {{
+    from {{ opacity: 0; transform: translateY(18px); }}
+    to   {{ opacity: 1; transform: translateY(0); }}
+}}
+
+.hero {{
+    text-align: center;
+    margin-bottom: 32px;
+}}
+
+.brand {{
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 18px 10px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.06);
+    backdrop-filter: blur(12px);
+}}
+
+.brand-mark {{
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: linear-gradient(145deg, #2a3444, #171d28);
+    border: 1px solid rgba(156, 183, 216, .28);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 24px rgba(0,0,0,.28);
+}}
+
+.brand-mark svg {{
+    width: 22px;
+    height: 22px;
+    stroke: #b8c9de;
+}}
+
+.brand-name {{
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -.03em;
+    color: #f0f3f7;
+}}
+
+.search-panel {{
+    width: 100%;
+}}
+
+.search {{
+    display: flex;
+    align-items: center;
+    height: 56px;
+    padding: 0 18px;
+    border-radius: 16px;
+    background: rgba(18, 21, 27, .72);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow:
+        0 18px 40px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.04);
+    backdrop-filter: blur(18px);
+    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}}
+
+.search:hover {{
+    border-color: rgba(255,255,255,.12);
+}}
+
+.search:focus-within {{
+    border-color: rgba(126, 184, 255, .55);
+    box-shadow:
+        0 18px 40px rgba(0,0,0,.28),
+        0 0 0 4px rgba(70, 107, 159, .14),
+        inset 0 1px 0 rgba(255,255,255,.05);
+    transform: translateY(-1px);
+}}
+
+.search-icon {{
+    width: 20px;
+    height: 20px;
+    margin-right: 14px;
+    color: #7d8796;
+    flex-shrink: 0;
+}}
+
+.search input {{
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #f3f5f8;
+    font-size: 15px;
+}}
+
+.search input::placeholder {{
+    color: #727b89;
+}}
+
+.search-hint {{
+    margin-top: 10px;
+    text-align: center;
+    color: #5f6877;
+    font-size: 12px;
+}}
+
+.shortcuts-section {{
+    width: 100%;
+    margin-top: 34px;
+}}
+
+.section-head {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    padding: 0 4px;
+}}
+
+.section-title {{
+    color: #8b95a5;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}}
+
+.section-count {{
+    color: #5d6674;
+    font-size: 12px;
+}}
+
+.shortcuts {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    gap: 12px;
+}}
+
+.shortcut-card {{
+    position: relative;
+    border: none;
+    background: transparent;
+    padding: 0;
+    text-align: center;
+}}
+
+.shortcut-main,
+.shortcut-card.add {{
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 10px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.06);
+    background: rgba(255,255,255,.025);
+    color: #9aa3b2;
+    cursor: pointer;
+    transition:
+        transform .18s ease,
+        border-color .18s ease,
+        background .18s ease,
+        color .18s ease,
+        box-shadow .18s ease;
+}}
+
+.shortcut-card.add {{
+    border-style: dashed;
+    background: rgba(255,255,255,.015);
+}}
+
+.shortcut-main:hover,
+.shortcut-card.add:hover {{
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,.12);
+    background: rgba(255,255,255,.045);
+    color: #d7dde7;
+    box-shadow: 0 14px 28px rgba(0,0,0,.22);
+}}
+
+.shortcut-icon {{
+    width: 52px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    border: 1px solid rgba(255,255,255,.07);
+}}
+
+.shortcut-icon svg {{
+    width: 22px;
+    height: 22px;
+    stroke: #aeb7c4;
+}}
+
+.shortcut-favicon {{
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    object-fit: contain;
+}}
+
+.shortcut-label {{
+    max-width: 100%;
+    font-size: 12px;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}}
+
+.shortcut-actions {{
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: none;
+    gap: 4px;
+}}
+
+.shortcut-card:hover .shortcut-actions {{
+    display: flex;
+}}
+
+.shortcut-action {{
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(12, 14, 18, .92);
+    color: #b4bcc8;
+    border-radius: 8px;
+    padding: 3px 7px;
+    font-size: 10px;
+    cursor: pointer;
+}}
+
+.shortcut-action.delete {{
+    color: #ff8f8f;
+}}
+
+.shortcut-action:hover {{
+    background: rgba(255,255,255,.08);
+}}
+
+.footer {{
+    margin-top: 36px;
+    text-align: center;
+    color: #4d5664;
+    font-size: 11px;
+    letter-spacing: .24em;
+    text-transform: uppercase;
+}}
+</style>
+</head>
+<body>
+
+<div class="bg" aria-hidden="true">
+    <div class="bg-grid"></div>
+    <div class="bg-orb one"></div>
+    <div class="bg-orb two"></div>
+    <div class="bg-orb three"></div>
+</div>
+
+<main class="page">
+    <div class="shell">
+
+        <header class="hero">
             <div class="brand">
-
                 <div class="brand-mark">
-
-                    <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke-width="1.8"
-                        stroke-linecap="round"
-                        stroke-linejoin="round">
-
+                    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="12" cy="12" r="8.5"/>
                         <path d="M3.8 12h16.4"/>
                         <path d="M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5S14.4 18.2 12 20.5"/>
                         <path d="M12 3.5C9.6 5.8 8.4 8.6 8.4 12s1.2 6.2 3.6 8.5"/>
-
                     </svg>
-
                 </div>
-
-                <span>Rhodium</span>
-
+                <span class="brand-name">Rhodium</span>
             </div>
+        </header>
 
-
-            <!-- SEARCH -->
-
+        <section class="search-panel">
             <div class="search">
-
-                <svg
-                    class="search-icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round">
-
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
                     <circle cx="11" cy="11" r="6.5"/>
                     <path d="m16 16 4 4"/>
-
                 </svg>
-
-                <input
-                    id="q"
-                    type="text"
-                    placeholder="Search or enter address"
-                    autocomplete="off"
-                    autofocus
-                >
-
+                <input id="q" type="text" placeholder="Search the web or enter an address"
+                       autocomplete="off" spellcheck="false" autofocus>
             </div>
-
-
-            <!-- SHORTCUTS -->
-
-            <div class="shortcuts">
-
-                <!-- Mail -->
-
-                <div
-                    class="shortcut"
-                    onclick="nav('https://mail.google.com')">
-
-                    <div class="shortcut-button">
-
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round"
-                            stroke-linejoin="round">
-
-                            <rect x="3" y="5" width="18" height="14" rx="2"/>
-                            <path d="m4 7 8 6 8-6"/>
-
-                        </svg>
-
-                    </div>
-
-                    <span>Mail</span>
-
-                </div>
-
-
-                <!-- Video -->
-
-                <div
-                    class="shortcut"
-                    onclick="nav('https://youtube.com')">
-
-                    <div class="shortcut-button">
-
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round"
-                            stroke-linejoin="round">
-
-                            <rect x="3" y="5" width="18" height="14" rx="3"/>
-                            <path d="m10 9 5 3-5 3z"/>
-
-                        </svg>
-
-                    </div>
-
-                    <span>Video</span>
-
-                </div>
-
-
-                <!-- Developer -->
-
-                <div
-                    class="shortcut"
-                    onclick="nav('https://github.com')">
-
-                    <div class="shortcut-button">
-
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round"
-                            stroke-linejoin="round">
-
-                            <path d="m8 8-4 4 4 4"/>
-                            <path d="m16 8 4 4-4 4"/>
-                            <path d="m14 5-4 14"/>
-
-                        </svg>
-
-                    </div>
-
-                    <span>Developer</span>
-
-                </div>
-
-
-                <!-- News -->
-
-                <div
-                    class="shortcut"
-                    onclick="nav('https://news.google.com')">
-
-                    <div class="shortcut-button">
-
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round"
-                            stroke-linejoin="round">
-
-                            <rect x="4" y="4" width="16" height="16" rx="2"/>
-                            <path d="M8 8h8"/>
-                            <path d="M8 12h8"/>
-                            <path d="M8 16h5"/>
-
-                        </svg>
-
-                    </div>
-
-                    <span>News</span>
-
-                </div>
-
-
-                <!-- Social -->
-
-                <div
-                    class="shortcut"
-                    onclick="nav('https://twitter.com')">
-
-                    <div class="shortcut-button">
-
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round"
-                            stroke-linejoin="round">
-
-                            <path d="M5 6h14v9a3 3 0 0 1-3 3H8l-3 3v-15z"/>
-                            <path d="M8 10h8"/>
-                            <path d="M8 13h5"/>
-
-                        </svg>
-
-                    </div>
-
-                    <span>Social</span>
-
-                </div>
-
-
-                <!-- Shopping -->
-
-                <div
-                    class="shortcut"
-                    onclick="nav('https://amazon.com')">
-
-                    <div class="shortcut-button">
-
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round"
-                            stroke-linejoin="round">
-
-                            <path d="M4 5h2l2 11h10l2-8H7"/>
-                            <circle cx="10" cy="20" r="1"/>
-                            <circle cx="18" cy="20" r="1"/>
-
-                        </svg>
-
-                    </div>
-
-                    <span>Shopping</span>
-
-                </div>
-
-
-                <!-- Design -->
-
-                <div
-                    class="shortcut"
-                    onclick="nav('https://figma.com')">
-
-                    <div class="shortcut-button">
-
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round"
-                            stroke-linejoin="round">
-
-                            <circle cx="9" cy="6" r="3"/>
-                            <circle cx="15" cy="6" r="3"/>
-                            <circle cx="9" cy="12" r="3"/>
-                            <circle cx="15" cy="12" r="3"/>
-                            <path d="M9 15v3a3 3 0 1 0 3-3v-3"/>
-
-                        </svg>
-
-                    </div>
-
-                    <span>Design</span>
-
-                </div>
-
-
-                <!-- Add -->
-
-                <div
-                    class="shortcut add"
-                    onclick="addLink()">
-
-                    <div class="shortcut-button">
-
-                        <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round">
-
-                            <path d="M12 5v14"/>
-                            <path d="M5 12h14"/>
-
-                        </svg>
-
-                    </div>
-
-                    <span>Add</span>
-
-                </div>
-
+            <p class="search-hint">Press Enter to search or navigate</p>
+        </section>
+
+        <section class="shortcuts-section">
+            <div class="section-head">
+                <span class="section-title">Quick access</span>
+                <span class="section-count" id="shortcut-count"></span>
             </div>
-
-
-            <div class="footer">
-                RHODIUM
+            <div class="shortcuts" id="shortcuts">
+                {shortcuts_html}
             </div>
+        </section>
 
-        </div>
+        <footer class="footer">Fast · Private · Yours</footer>
+    </div>
+</main>
 
+<script>
+(function () {{
+    const searchInput = document.getElementById('q');
+    const countEl = document.getElementById('shortcut-count');
 
-        <script>
+    function nav(query) {{
+        window.location.href = 'rhodium://navigate?q=' + encodeURIComponent(query);
+    }}
 
-        document
-            .getElementById('q')
-            .addEventListener('keydown', e => {{
+    const cards = document.querySelectorAll('.shortcut-card[data-url]');
+    countEl.textContent = cards.length + ' saved';
 
-                if (e.key === 'Enter') {{
+    cards.forEach(card => {{
+        const main = card.querySelector('.shortcut-main');
+        main.addEventListener('click', () => {{
+            const url = card.dataset.url;
+            if (url) nav(url);
+        }});
+    }});
 
-                    const value = e.target.value.trim();
+    document.querySelectorAll('.shortcut-action').forEach(btn => {{
+        btn.addEventListener('click', event => {{
+            event.stopPropagation();
+            const href = btn.dataset.href;
+            if (href) window.location.href = href;
+        }});
+    }});
 
-                    if (value) {{
-                        nav(value);
-                    }}
+    document.getElementById('add-shortcut').addEventListener('click', () => {{
+        window.location.href = 'rhodium://add-shortcut';
+    }});
 
-                }}
-
-            }});
-
-
-        function nav(query) {{
-
-            window.location.href =
-                'rhodium://navigate?q=' +
-                encodeURIComponent(query);
-
+    searchInput.addEventListener('keydown', event => {{
+        if (event.key === 'Enter') {{
+            const value = searchInput.value.trim();
+            if (value) nav(value);
         }}
-
-
-        function addLink() {{
-
-            const name = prompt('Link name:');
-            const url = prompt('URL:');
-
-            if (url) {{
-                nav(url);
-            }}
-
-        }}
-
-        </script>
-
-        </body>
-        </html>"""
+    }});
+}})();
+</script>
+</body>
+</html>"""
 
 def get_offline_page_html(failed_url="") -> str:
     """

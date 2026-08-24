@@ -1,4 +1,3 @@
-from pathlib import Path
 import ctypes
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QFormLayout, QLineEdit, 
@@ -35,10 +34,6 @@ class SettingsDialog(QDialog):
         self.home_page_input = QLineEdit()
         self.home_page_input.setText(self.parent_browser.settings.get("home_page", "about:home"))
         form_layout.addRow("Home Page:", self.home_page_input)
-
-        self.download_dir = QLineEdit()
-        self.download_dir.setText(self.parent_browser.settings.get("download_dir", str(Path.home() / "Downloads")))
-        form_layout.addRow("Download Directory:", self.download_dir)
 
         self.javascript_check = QCheckBox("Enable JavaScript")
         self.javascript_check.setChecked(self.parent_browser.settings.get("javascript_enabled", True))
@@ -87,7 +82,6 @@ class SettingsDialog(QDialog):
     def save_settings(self):
         settings = {
             "home_page": self.home_page_input.text(),
-            "download_dir": self.download_dir.text(),
             "javascript_enabled": self.javascript_check.isChecked(),
             "local_storage_enabled": self.local_storage_check.isChecked(),
             "cookies_enabled": self.cookies_check.isChecked(),
@@ -103,7 +97,6 @@ class SettingsDialog(QDialog):
 
     def reset_settings(self):
         self.home_page_input.setText("about:home")
-        self.download_dir.setText(str(Path.home() / "Downloads"))
         self.javascript_check.setChecked(True)
         self.local_storage_check.setChecked(True)
         self.cookies_check.setChecked(True)

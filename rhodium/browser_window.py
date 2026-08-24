@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
-from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject, QUrl
+from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 
 from rhodium.utils import icon
@@ -25,7 +25,6 @@ from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_pa
 from rhodium.settings_dialog import SettingsDialog
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
-from rhodium.download_manager import DownloadManager
 
 
 class AdvancedBrowser(QMainWindow):
@@ -43,7 +42,6 @@ class AdvancedBrowser(QMainWindow):
         self.bookmarks_file = self.config_dir / "bookmarks.json"
         self.history_file   = self.config_dir / "history.json"
         self.settings_file  = self.config_dir / "settings.json"
-        self.downloads_file = self.config_dir / "downloads.json"
 
         self.bookmarks = self.load_bookmarks()
         self.history   = self.load_history()
@@ -96,9 +94,12 @@ class AdvancedBrowser(QMainWindow):
         self.tab_widget.setMovable(True)
         self.tab_widget.setUsesScrollButtons(True)
         self.tab_widget.setElideMode(Qt.TextElideMode.ElideRight)
+        self.tab_widget.setIconSize(QSize(16, 16))
 
-        self.tab_widget.tabBar().setMinimumHeight(38)
-        self.tab_widget.tabBar().setExpanding(False)
+        tab_bar = self.tab_widget.tabBar()
+        tab_bar.setObjectName("RhodiumTabBar")
+        tab_bar.setMinimumHeight(42)
+        tab_bar.setExpanding(False)
 
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.tab_widget.currentChanged.connect(self.tab_changed)
@@ -108,12 +109,10 @@ class AdvancedBrowser(QMainWindow):
         self.new_tab_button.setObjectName("NewTabButton")
         self.new_tab_button.setIcon(icon("plus.png"))
         self.new_tab_button.setIconSize(QSize(16, 16))
-        self.new_tab_button.setFixedSize(32, 32)
+        self.new_tab_button.setFixedSize(28, 28)
         self.new_tab_button.setAutoRaise(True)
         self.new_tab_button.setToolTip("New Tab  (Ctrl+T)")
         self.new_tab_button.clicked.connect(lambda: self.add_new_tab())
-
-        self.download_manager = DownloadManager(self)
 
         self.tab_widget.setCornerWidget(
             self.new_tab_button,
@@ -151,7 +150,6 @@ class AdvancedBrowser(QMainWindow):
         self._add_shortcut("Ctrl+L",       self.url_bar.setFocus)
         self._add_shortcut("Ctrl+F",       self.open_find_dialog)
         self._add_shortcut("Ctrl+D",       self.add_bookmark)
-        self._add_shortcut("Ctrl+J",       self.download_manager.show_downloads)
         self._add_shortcut("Ctrl+,",       self.open_settings)
         self._add_shortcut("Ctrl+N",       self.open_new_window)
         self._add_shortcut("Ctrl+Q",       self.close)
@@ -263,17 +261,6 @@ class AdvancedBrowser(QMainWindow):
         self.btn_history.setMenu(self.create_history_menu())
         bar.addWidget(self.btn_history)
 
-        # DOWNLOADS
-        self.btn_download = QPushButton()
-        self.btn_download.setObjectName("NavBtn")
-        self.btn_download.setIcon(icon("download.png"))
-        self.btn_download.setIconSize(QSize(17, 17))
-        self.btn_download.setFixedSize(34, 34)
-        self.btn_download.setToolTip("Downloads  (Ctrl+J)")
-        self.download_manager = DownloadManager(self)
-        self.btn_download.clicked.connect(self.download_manager.show_downloads)
-        bar.addWidget(self.btn_download)
-
         # MENU
         self.btn_menu = QPushButton()
         self.btn_menu.setObjectName("NavBtn")
@@ -298,8 +285,10 @@ class AdvancedBrowser(QMainWindow):
 
         self.btn_maximize = QPushButton()
         self.btn_maximize.setObjectName("WinMaxBtn")
-        if self.isMaximized: self.btn_maximize.setIcon(icon("win-maximize.png")) 
-        else: self.btn_maximize.setIcon(icon("win-restore.png")) 
+        if self.isMaximized():
+            self.btn_maximize.setIcon(icon("win-restore.png"))
+        else:
+            self.btn_maximize.setIcon(icon("win-maximize.png"))
         self.btn_maximize.setIconSize(QSize(14, 14))
         self.btn_maximize.setFixedSize(34, 34)
         self.btn_maximize.setFlat(True)
@@ -374,9 +363,7 @@ class AdvancedBrowser(QMainWindow):
 
         m.addSeparator()
 
-        self.download_manager = DownloadManager(self)
         m.addSection("Tools")
-        m.addAction(icon("download.png"),  "Downloads",         self.download_manager.show_downloads).setShortcut(QKeySequence("Ctrl+J"))
         m.addAction(icon("settings.png"),  "Settings",          self.open_settings).setShortcut(QKeySequence("Ctrl+,"))
         m.addAction(icon("delete.png"),    "Clear Browsing Data", self.clear_browsing_data_prompt)
         m.addAction(icon("developer.png"), "Developer Tools",   self.open_dev_tools_info).setShortcut(QKeySequence("F12"))
@@ -516,8 +503,8 @@ class AdvancedBrowser(QMainWindow):
 
     def open_new_window(self):
         # Imports here to avoid circular imports during direct instantiation
-        from browser_window import AdvancedBrowser
-        from window_filter import ResizeMoveFilter
+        from rhodium.browser_window import AdvancedBrowser
+        from rhodium.window_filter import ResizeMoveFilter
         from PyQt6.QtWidgets import QApplication
         
         window = AdvancedBrowser()
@@ -694,7 +681,6 @@ class AdvancedBrowser(QMainWindow):
             pass
         return {
             "home_page": "about:home",
-            "download_dir": str(Path.home() / "Downloads"),
             "javascript_enabled": True,
             "local_storage_enabled": True,
             "cookies_enabled": True,
@@ -709,14 +695,6 @@ class AdvancedBrowser(QMainWindow):
 
     def apply_global_settings(self):
         profile = QWebEngineProfile.defaultProfile()
-        try:
-            profile.downloadRequested.disconnect()
-        except TypeError:
-            pass
-
-        profile.downloadRequested.connect(
-            self.download_manager.on_download_requested
-        )
         profile.setHttpCacheType(
             QWebEngineProfile.HttpCacheType.DiskHttpCache
             if self.settings.get("cache_enabled", True)
@@ -811,7 +789,6 @@ class AdvancedBrowser(QMainWindow):
             "Ctrl+F    Find in Page",
             "Ctrl+G    Find Next",
             "Ctrl+L    Focus URL Bar",
-            "Ctrl+J    Downloads",
             "Ctrl++    Zoom In",
             "Ctrl+-    Zoom Out",
             "Ctrl+0    Reset Zoom",
