@@ -1,3 +1,6 @@
+from pathlib import Path
+
+from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QPoint, QRect, QRectF, QSize, QObject, QEvent, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QPainter, QColor, QPen
 from PyQt6.QtWidgets import (
@@ -11,30 +14,75 @@ from rhodium.download_manager import (
     DownloadState, format_bytes, format_speed, format_eta
 )
 
+# ── Icon helper ───────────────────────────────────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent.parent
+ICONS_DIR = BASE_DIR / "style" / "icons"
 
-def type_badge(filename: str) -> str:
+
+def icon(name: str) -> QIcon:
+    return QIcon(str(ICONS_DIR / name))
+
+
+def type_badge(filename: str) -> QIcon:
+    """
+    Return the appropriate Rhodium PNG icon for a downloaded file type.
+    """
+
     name = filename.lower()
-    if name.endswith((".exe", ".msi", ".msix", ".msp", ".bat", ".cmd", ".ps1", ".scr", ".jar")):
-        return "⚙️"
-    if name.endswith((".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso")):
-        return "📦"
+
+    if name.endswith((
+        ".exe", ".msi", ".msix", ".msp",
+        ".bat", ".cmd", ".ps1", ".scr", ".jar"
+    )):
+        return icon("file-executable.png")
+
+    if name.endswith((
+        ".zip", ".rar", ".7z", ".tar",
+        ".gz", ".bz2", ".xz", ".iso"
+    )):
+        return icon("file-archive.png")
+
     if name.endswith(".pdf"):
-        return "📕"
-    if name.endswith((".mp3", ".wav", ".flac", ".ogg", ".m4a")):
-        return "🎵"
-    if name.endswith((".mp4", ".mkv", ".avi", ".mov", ".webm")):
-        return "🎬"
-    if name.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg")):
-        return "🖼️"
-    if name.endswith((".doc", ".docx", ".txt", ".rtf", ".odt")):
-        return "📝"
-    if name.endswith((".xls", ".xlsx", ".csv", ".ods")):
-        return "📊"
-    if name.endswith((".ppt", ".pptx", ".odp")):
-        return "📽️"
-    if name.endswith((".py", ".js", ".html", ".css", ".json", ".xml", ".ts")):
-        return "📜"
-    return "📄"
+        return icon("file-pdf.png")
+
+    if name.endswith((
+        ".mp3", ".wav", ".flac", ".ogg", ".m4a"
+    )):
+        return icon("file-audio.png")
+
+    if name.endswith((
+        ".mp4", ".mkv", ".avi", ".mov", ".webm"
+    )):
+        return icon("file-video.png")
+
+    if name.endswith((
+        ".jpg", ".jpeg", ".png", ".gif",
+        ".webp", ".bmp", ".svg"
+    )):
+        return icon("file-image.png")
+
+    if name.endswith((
+        ".doc", ".docx", ".txt", ".rtf", ".odt"
+    )):
+        return icon("file-document.png")
+
+    if name.endswith((
+        ".xls", ".xlsx", ".csv", ".ods"
+    )):
+        return icon("file-spreadsheet.png")
+
+    if name.endswith((
+        ".ppt", ".pptx", ".odp"
+    )):
+        return icon("file-presentation.png")
+
+    if name.endswith((
+        ".py", ".js", ".html", ".css",
+        ".json", ".xml", ".ts"
+    )):
+        return icon("file-code.png")
+
+    return icon("file.png")
 
 
 def status_text(item) -> str:
@@ -133,7 +181,8 @@ class DownloadPopupItem(QFrame):
         top = QHBoxLayout()
         top.setSpacing(8)
 
-        self.icon_label = QLabel(type_badge(item.filename))
+        self.icon_label = QLabel()
+        self.icon_label.setPixmap(type_badge(item.filename).pixmap(24, 24))
         self.icon_label.setObjectName("DownloadItemIcon")
         self.icon_label.setFixedSize(24, 24)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -386,7 +435,8 @@ class DownloadMenuRow(QFrame):
         row.setContentsMargins(10, 8, 8, 8)
         row.setSpacing(10)
 
-        icon_label = QLabel(type_badge(item.filename))
+        icon_label = QLabel()
+        icon_label.setPixmap(type_badge(item.filename).pixmap(26, 26))
         icon_label.setObjectName("DownloadItemIcon")
         icon_label.setFixedSize(26, 26)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

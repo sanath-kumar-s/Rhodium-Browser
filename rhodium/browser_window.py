@@ -27,6 +27,9 @@ from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
 from rhodium.download_manager import DownloadManager
 from rhodium.download_ui import DownloadToolbarButton
+from rhodium.database import get_database
+from rhodium.suggestions import SuggestionController
+from rhodium.suggestion_popup import SuggestionLineEdit, SuggestionPopup
 
 
 class RhodiumTabWidget(QWidget):
@@ -151,6 +154,19 @@ class AdvancedBrowser(QMainWindow):
         self.shortcuts = self.load_shortcuts()
 
         self.download_manager = DownloadManager(self)
+
+        # Local suggestion data (SQLite history + recent searches + bookmarks)
+        self.database = get_database()
+        self.suggestion_controller = SuggestionController(
+            self.database,
+            bookmarks_provider=lambda: self.bookmarks,
+        )
+
+        # Shared home-page search suggestion popup (reused across home tabs)
+        self._home_popup = SuggestionPopup(self)
+        self._home_suggestions = []
+        self._home_popup_view = None
+        self._home_popup.activated.connect(self._on_home_suggestion_activated)
 
         self._downloads_refresh_timer = QTimer(self)
         self._downloads_refresh_timer.setSingleShot(True)
@@ -305,8 +321,10 @@ class AdvancedBrowser(QMainWindow):
         bar.addSeparator()
 
         # URL BAR
-        self.url_bar = QLineEdit()
+        self.url_bar = SuggestionLineEdit()
         self.url_bar.setObjectName("UrlBar")
+        self.url_bar.set_controller(self.suggestion_controller)
+        self.url_bar.suggestion_activated.connect(self._on_address_suggestion_activated)
         self.url_bar.setPlaceholderText("Search or enter address")
         self.url_bar.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -551,6 +569,8 @@ class AdvancedBrowser(QMainWindow):
             if "." in url_string and " " not in url_string:
                 url_string = "https://" + url_string
             else:
+                # Search executed through Rhodium's existing search mechanism.
+                self.database.record_search(url_string.strip())
                 url_string = "https://www.google.com/search?q=" + urllib.parse.quote_plus(url_string)
         view.load(QUrl(url_string))
 
@@ -626,6 +646,67 @@ class AdvancedBrowser(QMainWindow):
 
     def get_current_view(self):
         return self.tab_widget.currentWidget()
+
+    # ── Suggestion activation ────────────────────────────────────────────────
+    def _on_address_suggestion_activated(self, suggestion):
+        """A URL/search suggestion was picked from the address bar popup."""
+        self.load_url(suggestion.payload)
+
+    def resolve_home_search(self, query: str) -> str:
+        """If the home search popup has a highlighted suggestion, use it."""
+        if self._home_popup.isVisible():
+            suggestion = self._home_popup.selected_suggestion()
+            if suggestion is not None:
+                self._home_popup.hide()
+                return suggestion.payload
+        return query
+
+    def hide_home_popup(self):
+        self._home_popup.hide()
+
+    def show_home_suggestions(self, query: str, view):
+        """Show previous-search suggestions under the home page search box."""
+        if self.get_current_view() is not view:
+            return
+        suggestions = self.suggestion_controller.get_search_suggestions(query, limit=8)
+        if not suggestions:
+            self._home_popup.hide()
+            return
+        self._home_suggestions = suggestions
+        self._home_popup_view = view
+        view.page().runJavaScript(
+            "(function(){var r=document.getElementById('q').getBoundingClientRect();"
+            "return [r.left, r.top, r.width, r.height];})()",
+            self._position_home_popup,
+        )
+
+    def _position_home_popup(self, rect):
+        try:
+            view = self._home_popup_view
+            if not rect or len(rect) < 4 or view is None or not self._home_suggestions:
+                return
+            zoom = view.zoomFactor()
+            left = int(rect[0] * zoom)
+            bottom = int((rect[1] + rect[3]) * zoom)
+            width = int(rect[2] * zoom)
+            global_pos = view.mapToGlobal(QPoint(left, bottom + 6))
+            self._home_popup.set_suggestions(self._home_suggestions)
+            self._home_popup.show_at(global_pos, max(320, width))
+        except RuntimeError:
+            # The view/tab was closed while the JS rect query was in flight.
+            self.hide_home_popup()
+
+    def handle_home_suggest_key(self, key: str, view):
+        """Keyboard events forwarded from the home page search box."""
+        if key == "Escape":
+            self._home_popup.hide()
+        elif key in ("ArrowDown", "ArrowUp") and self._home_popup.isVisible():
+            self._home_popup.move_selection(1 if key == "ArrowDown" else -1)
+
+    def _on_home_suggestion_activated(self, suggestion):
+        """A previous-search suggestion was clicked in the home popup."""
+        self._home_popup.hide()
+        self.load_url(suggestion.payload)
 
     def go_back(self):
         v = self.get_current_view()
@@ -871,6 +952,7 @@ class AdvancedBrowser(QMainWindow):
                 v.setZoomFactor(self.settings.get("default_zoom", 100) / 100.0)
 
     def on_load_started(self, view):
+        self.hide_home_popup()
         if self.get_current_view() != view:
             return
         self.status_label.setText("Loading…")
@@ -887,6 +969,11 @@ class AdvancedBrowser(QMainWindow):
         url = view.url().toString()
         title = view.title() or url
         idx = self.tab_widget.indexOf(view)
+
+        # Record the visit in the local SQLite suggestion database.
+        # Internal/invalid URLs are filtered inside record_visit().
+        if ok:
+            self.database.record_visit(url, title)
 
         if idx >= 0:
             short = title[:28] + "…" if len(title) > 28 else title

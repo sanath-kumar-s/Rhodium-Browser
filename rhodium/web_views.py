@@ -23,9 +23,23 @@ class RhodiumWebEnginePage(QWebEnginePage):
 
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):
         url_str = url.toString()
+        if url_str.startswith("rhodium://suggest?query="):
+            query = urllib.parse.unquote(url_str.split("rhodium://suggest?query=")[1])
+            if self._view is not None:
+                self.browser_window.show_home_suggestions(query, self._view)
+            return False
+        elif url_str.startswith("rhodium://suggest-key?key="):
+            key = urllib.parse.unquote(url_str.split("rhodium://suggest-key?key=")[1])
+            if self._view is not None:
+                self.browser_window.handle_home_suggest_key(key, self._view)
+            return False
+        elif url_str == "rhodium://suggest-hide":
+            self.browser_window.hide_home_popup()
+            return False
         if url_str.startswith("rhodium://navigate?q="):
             query = url_str.split("rhodium://navigate?q=")[1]
             decoded_query = urllib.parse.unquote(query)
+            decoded_query = self.browser_window.resolve_home_search(decoded_query)
             self.browser_window.load_url(decoded_query)
             return False
         elif url_str.startswith("rhodium://retry?url="):

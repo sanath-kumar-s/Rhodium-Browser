@@ -391,6 +391,58 @@ def get_stylesheet() -> str:
 
 
         /* =========================================================
+        SUGGESTION POPUP
+        ========================================================= */
+
+        QFrame#SuggestionPopup {
+            background: #14171d;
+            border: 1px solid #2a313c;
+            border-radius: 10px;
+        }
+
+        QListWidget#SuggestionList {
+            background: transparent;
+            border: none;
+            outline: none;
+        }
+
+        QListWidget#SuggestionList::item {
+            background: transparent;
+            border-radius: 8px;
+            margin: 1px 2px;
+        }
+
+        QListWidget#SuggestionList::item:hover {
+            background: #1d222b;
+        }
+
+        QListWidget#SuggestionList::item:selected {
+            background: #2b323d;
+        }
+
+        QWidget#SuggestionRow {
+            background: transparent;
+        }
+
+        QLabel#SuggestionPrimary {
+            color: #eef1f5;
+            font-size: 13px;
+            font-weight: 500;
+            background: transparent;
+        }
+
+        QLabel#SuggestionSecondary {
+            color: #8b939f;
+            font-size: 11px;
+            background: transparent;
+        }
+
+        QLabel#SuggestionIcon {
+            background: transparent;
+        }
+
+
+        /* =========================================================
         STATUS BAR
         ========================================================= */
 
@@ -1241,7 +1293,36 @@ body {{
         if (event.key === 'Enter') {{
             const value = searchInput.value.trim();
             if (value) nav(value);
+        }} else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {{
+            event.preventDefault();
+            window.location.href = 'rhodium://suggest-key?key=' + event.key;
+        }} else if (event.key === 'Escape') {{
+            window.location.href = 'rhodium://suggest-key?key=Escape';
         }}
+    }});
+
+    // Local previous-search suggestions (Phase 1, offline)
+    let suggestTimer = null;
+
+    searchInput.addEventListener('input', () => {{
+        clearTimeout(suggestTimer);
+        const value = searchInput.value.trim();
+        if (value.length < 2) {{
+            window.location.href = 'rhodium://suggest-hide';
+            return;
+        }}
+        suggestTimer = setTimeout(() => {{
+            window.location.href =
+                'rhodium://suggest?query=' + encodeURIComponent(value);
+        }}, 180);
+    }});
+
+    searchInput.addEventListener('blur', () => {{
+        setTimeout(() => {{
+            if (document.activeElement !== searchInput) {{
+                window.location.href = 'rhodium://suggest-hide';
+            }}
+        }}, 200);
     }});
 }})();
 </script>
