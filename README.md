@@ -1,7 +1,7 @@
 # RHODIUM Browser
 
 <p align="center">
-  <img src="style/icons/home.png" alt="RHODIUM" width="96" />
+  <img src="style/icons/README/HomePage.png" alt="RHODIUM" width="1280" />
 </p>
 
 <p align="center">
