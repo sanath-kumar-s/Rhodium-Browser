@@ -720,6 +720,8 @@ class AdvancedBrowser(QMainWindow):
                 a = menu.addAction(title)
                 a.triggered.connect(lambda checked, u=item["url"]: self.load_url(u))
         menu.addSeparator()
+        menu.addAction(icon("history.png"), "Open History Page",
+                        self.open_history_page)
         menu.addAction("Clear History", self.clear_history)
 
     def create_history_menu(self) -> QMenu:
