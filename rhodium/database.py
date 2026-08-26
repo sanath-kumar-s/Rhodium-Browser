@@ -5,7 +5,7 @@ All suggestion data for Phase 1 comes from this database. It is fully offline.
 
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -45,8 +45,23 @@ class RhodiumDatabase:
 
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._init_schema()
+        try:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._init_schema()
+        except sqlite3.DatabaseError:
+            # The existing file is corrupt/unsupported — discard it and start fresh.
+            try:
+                self._conn.close()
+            except sqlite3.Error:
+                pass
+            for suffix in ("", "-wal", "-shm"):
+                try:
+                    Path(str(self.db_path) + suffix).unlink()
+                except OSError:
+                    pass
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._init_schema()
 
     # ── Setup ────────────────────────────────────────────────────────────────
     def _init_schema(self):
@@ -88,21 +103,24 @@ class RhodiumDatabase:
         if not is_recordable_url(url):
             return
         title = (title or "").strip()
-        with self._lock, self._conn:
-            self._conn.execute(
-                """
-                INSERT INTO history (url, title, visit_count, last_visited)
-                VALUES (?, ?, 1, ?)
-                ON CONFLICT(url) DO UPDATE SET
-                    visit_count  = visit_count + 1,
-                    last_visited = excluded.last_visited,
-                    title = CASE
-                        WHEN excluded.title != '' THEN excluded.title
-                        ELSE history.title
-                    END
-                """,
-                (url, title, now_iso()),
-            )
+        try:
+            with self._lock, self._conn:
+                self._conn.execute(
+                    """
+                    INSERT INTO history (url, title, visit_count, last_visited)
+                    VALUES (?, ?, 1, ?)
+                    ON CONFLICT(url) DO UPDATE SET
+                        visit_count  = visit_count + 1,
+                        last_visited = excluded.last_visited,
+                        title = CASE
+                            WHEN excluded.title != '' THEN excluded.title
+                            ELSE history.title
+                        END
+                    """,
+                    (url, title, now_iso()),
+                )
+        except (sqlite3.Error, OSError):
+            pass
 
     # ── Search history recording ─────────────────────────────────────────────
     def record_search(self, query: str):
@@ -184,6 +202,92 @@ class RhodiumDatabase:
     def history_row_count(self) -> int:
         with self._lock:
             return self._conn.execute("SELECT COUNT(*) FROM history").fetchone()[0]
+
+    # ── History queries & deletion ───────────────────────────────────────────
+    def get_history(self, limit: int = None):
+        """All history rows ordered by most-recent visit first.
+
+        Each row exposes url, title, visit_count and last_visited (ISO string).
+        Returns an empty list if the database is missing or corrupt.
+        """
+        try:
+            with self._lock:
+                if limit:
+                    rows = self._conn.execute(
+                        """
+                        SELECT url, title, visit_count, last_visited FROM history
+                        ORDER BY last_visited DESC LIMIT ?
+                        """,
+                        (limit,),
+                    ).fetchall()
+                else:
+                    rows = self._conn.execute(
+                        """
+                        SELECT url, title, visit_count, last_visited FROM history
+                        ORDER BY last_visited DESC
+                        """
+                    ).fetchall()
+            return [
+                {"url": r[0], "title": r[1],
+                 "visit_count": r[2], "last_visited": r[3]}
+                for r in rows
+            ]
+        except (sqlite3.Error, OSError):
+            return []
+
+    def delete_history_item(self, url: str):
+        """Remove a single URL from history."""
+        url = (url or "").strip()
+        if not url:
+            return
+        try:
+            with self._lock, self._conn:
+                self._conn.execute("DELETE FROM history WHERE url = ?", (url,))
+        except (sqlite3.Error, OSError):
+            pass
+
+    def clear_history(self):
+        """Delete every history row."""
+        try:
+            with self._lock, self._conn:
+                self._conn.execute("DELETE FROM history")
+        except (sqlite3.Error, OSError):
+            pass
+
+    def clear_history_range(self, range_key: str):
+        """Delete history within a time window.
+
+        range_key:
+            "hour"      — visits from the last hour
+            "today"     — visits from the start of today
+            "yesterday" — visits from the start of yesterday (today + yesterday)
+            "all"       — every row
+        """
+        range_key = (range_key or "").strip().lower()
+        if range_key == "all":
+            self.clear_history()
+            return
+        now = datetime.now()
+        if range_key == "hour":
+            threshold = (now - timedelta(hours=1)).isoformat(timespec="seconds")
+        elif range_key == "today":
+            threshold = now.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            ).isoformat(timespec="seconds")
+        elif range_key == "yesterday":
+            start = (now - timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            threshold = start.isoformat(timespec="seconds")
+        else:
+            return
+        try:
+            with self._lock, self._conn:
+                self._conn.execute(
+                    "DELETE FROM history WHERE last_visited >= ?", (threshold,)
+                )
+        except (sqlite3.Error, OSError):
+            pass
 
     # ── One-time migration from the legacy JSON history file ────────────────
     def migrate_json_history(self, json_path: Path):

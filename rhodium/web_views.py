@@ -58,6 +58,21 @@ class RhodiumWebEnginePage(QWebEnginePage):
         elif url_str.startswith("rhodium://downloads-clear"):
             self.browser_window.clear_download_history()
             return False
+        elif url_str.startswith("rhodium://history-action?"):
+            params = urllib.parse.parse_qs(url.query())
+            action = params.get("action", [""])[0]
+            target_url = params.get("url", [""])[0]
+            self.browser_window.handle_history_action(target_url, action)
+            return False
+        elif url_str.startswith("rhodium://history-clear"):
+            params = urllib.parse.parse_qs(url.query())
+            range_key = params.get("range", ["all"])[0]
+            self.browser_window.handle_history_clear(range_key)
+            return False
+        elif url_str.split("?")[0] == "rhodium://history":
+            if self._view is not None:
+                self.browser_window.show_history_in_view(self._view)
+            return False
         elif url_str.split("?")[0] == "rhodium://downloads":
             if self._view is not None:
                 self.browser_window.show_downloads_in_view(self._view)

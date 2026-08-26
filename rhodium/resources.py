@@ -1626,3 +1626,243 @@ render(ALL_DOWNLOADS);
 </script>
 </body>
 </html>"""
+
+
+def get_history_page_html(history_json: str = "[]") -> str:
+    """Generate the rhodium://history internal page.
+
+    `history_json` is a JSON array of rows produced by RhodiumDatabase.get_history.
+    Each row: {"url", "title", "visit_count", "last_visited"} where last_visited
+    is an ISO timestamp in local time.
+    """
+    safe_json = history_json.replace("</", "<\\/")
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>History — Rhodium</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+    background: #0b0d10; color: #e8eaed;
+    font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+}}
+.page {{ max-width: 920px; margin: 0 auto; padding: 32px 24px 48px; }}
+.header {{
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+}}
+.header h1 {{ font-size: 24px; font-weight: 600; letter-spacing: -.02em; }}
+.header-actions {{ display: flex; gap: 10px; align-items: center; flex: 1; justify-content: flex-end; position: relative; }}
+.search {{
+    background: #181b21; border: 1px solid #2b2f36; border-radius: 9px;
+    color: #e1e4e8; padding: 8px 12px; font-size: 13px; width: min(280px, 100%);
+    outline: none;
+}}
+.search:focus {{ border-color: #426cae; }}
+.btn {{
+    background: #1b1e24; color: #c6cad1; border: 1px solid #2b2f36;
+    border-radius: 7px; padding: 8px 14px; font-size: 12px; cursor: pointer;
+}}
+.btn:hover {{ background: #252930; color: #fff; }}
+.btn-danger:hover {{ background: #4a2020; border-color: #6b3030; }}
+.clear-menu {{
+    position: absolute; top: 42px; right: 0; z-index: 20;
+    background: #161a20; border: 1px solid #2b2f36; border-radius: 10px;
+    padding: 6px; min-width: 200px; box-shadow: 0 12px 30px rgba(0,0,0,.5);
+    display: none;
+}}
+.clear-menu.open {{ display: block; }}
+.clear-menu button {{
+    display: block; width: 100%; text-align: left; background: none; border: none;
+    color: #d5dae3; padding: 9px 12px; font-size: 12.5px; border-radius: 7px; cursor: pointer;
+}}
+.clear-menu button:hover {{ background: #232831; color: #fff; }}
+.clear-menu button.danger:hover {{ background: #3a1c1c; color: #ff9c9c; }}
+.section {{ margin-bottom: 26px; }}
+.section-title {{
+    font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: #747b86; margin: 18px 4px 10px;
+}}
+.list {{ display: flex; flex-direction: column; gap: 6px; }}
+.item {{
+    background: #14171d; border: 1px solid #252b34; border-radius: 10px;
+    padding: 10px 12px; display: grid; grid-template-columns: 30px 1fr auto;
+    gap: 12px; align-items: center; transition: border-color .15s, background .15s;
+    cursor: pointer;
+}}
+.item:hover {{ border-color: #353d49; background: #171b22; }}
+.fav-wrap {{
+    width: 28px; height: 28px; border-radius: 7px; background: #222730;
+    display: grid; place-items: center; overflow: hidden; font-size: 14px;
+}}
+.fav-wrap img {{ width: 20px; height: 20px; }}
+.meta {{ min-width: 0; }}
+.title {{
+    font-size: 13px; font-weight: 600; color: #eef1f5;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}}
+.sub {{ font-size: 11px; color: #8b939f; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.time {{ font-size: 11px; color: #6f7785; white-space: nowrap; padding-right: 4px; }}
+.del {{
+    background: #242932; color: #d5dae3; border: none; border-radius: 6px;
+    padding: 6px 10px; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity .15s;
+}}
+.item:hover .del {{ opacity: 1; }}
+.del:hover {{ background: #4a2020; color: #ff9c9c; }}
+.empty {{ text-align: center; color: #636b78; padding: 48px 20px; font-size: 13px; }}
+.empty .big {{ font-size: 40px; opacity: .5; margin-bottom: 10px; }}
+</style>
+</head>
+<body>
+<div class="page">
+    <div class="header">
+        <h1>History</h1>
+        <div class="header-actions">
+            <input type="search" class="search" id="search" placeholder="Search history…">
+            <button class="btn btn-danger" id="clear-btn">Clear</button>
+            <div class="clear-menu" id="clear-menu">
+                <button data-range="hour">Last hour</button>
+                <button data-range="today">Today</button>
+                <button data-range="yesterday">Today &amp; yesterday</button>
+                <button class="danger" data-range="all">All history</button>
+            </div>
+        </div>
+    </div>
+    <div id="content"></div>
+    <div class="empty" id="empty-msg" style="display:none">
+        <div class="big">🕘</div>
+        <div>No history found</div>
+    </div>
+</div>
+<script>
+const ALL_HISTORY = {safe_json};
+
+function domainOf(url) {{
+    try {{ return new URL(url).hostname; }} catch (e) {{ return ''; }}
+}}
+function pad(n) {{ return n < 10 ? '0' + n : '' + n; }}
+function fmtTime(d) {{
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+}}
+function fmtDay(d) {{
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    return days[d.getDay()] + ' ' + fmtTime(d);
+}}
+function fmtOld(d) {{
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return pad(d.getDate()) + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' ' + fmtTime(d);
+}}
+function bucketOf(iso) {{
+    const d = new Date(iso.replace(' ', 'T'));
+    if (isNaN(d)) return 'older';
+    const now = new Date();
+    const dayMs = 86400000;
+    const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const itemMid = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const diff = Math.round((todayMid - itemMid) / dayMs);
+    if (diff <= 0) return 'today';
+    if (diff === 1) return 'yesterday';
+    if (diff <= 7) return 'week';
+    return 'older';
+}}
+function renderTime(iso, bucket) {{
+    const d = new Date(iso.replace(' ', 'T'));
+    if (isNaN(d)) return '';
+    if (bucket === 'today') return fmtTime(d);
+    if (bucket === 'yesterday') return 'Yesterday ' + fmtTime(d);
+    if (bucket === 'week') return fmtDay(d);
+    return fmtOld(d);
+}}
+function escapeHtml(s) {{
+    return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}}
+
+function renderItem(it) {{
+    const bucket = bucketOf(it.last_visited);
+    const dom = domainOf(it.url);
+    const title = it.title && it.title.trim() ? it.title : it.url;
+    const visits = (it.visit_count > 1) ? ' · ' + it.visit_count + ' visits' : '';
+    const fav = dom
+        ? '<img src="https://www.google.com/s2/favicons?sz=32&domain=' + encodeURIComponent(dom)
+          + '" onerror="this.style.display=&quot;none&quot;;this.parentNode.textContent=&quot;🌐&quot;">'
+        : '🌐';
+    const href = 'rhodium://navigate?q=' + encodeURIComponent(it.url);
+    const delHref = 'rhodium://history-action?action=delete&url=' + encodeURIComponent(it.url);
+    return '<div class="item" data-href="' + href + '">'
+        + '<div class="fav-wrap">' + fav + '</div>'
+        + '<div class="meta"><div class="title">' + escapeHtml(title) + '</div>'
+        + '<div class="sub">' + escapeHtml(it.url) + visits + '</div></div>'
+        + '<div style="display:flex;align-items:center;gap:10px">'
+        + '<span class="time">' + renderTime(it.last_visited, bucket) + '</span>'
+        + '<button class="del" data-del="' + delHref + '">Delete</button>'
+        + '</div></div>';
+}}
+
+function render() {{
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    let items = ALL_HISTORY.filter(it => {{
+        if (!q) return true;
+        const t = (it.title || '').toLowerCase();
+        const u = (it.url || '').toLowerCase();
+        return t.includes(q) || u.includes(q);
+    }});
+
+    const buckets = [
+        ['today', 'Today'],
+        ['yesterday', 'Yesterday'],
+        ['week', 'Previous 7 Days'],
+        ['older', 'Older']
+    ];
+    const content = document.getElementById('content');
+    content.innerHTML = '';
+    let total = 0;
+    for (const [key, label] of buckets) {{
+        const group = items.filter(it => bucketOf(it.last_visited) === key);
+        if (!group.length) continue;
+        total += group.length;
+        const sec = document.createElement('div');
+        sec.className = 'section';
+        sec.innerHTML = '<div class="section-title">' + label + '</div>'
+            + '<div class="list">' + group.map(renderItem).join('') + '</div>';
+        content.appendChild(sec);
+    }}
+    document.getElementById('empty-msg').style.display = total ? 'none' : 'block';
+
+    content.querySelectorAll('.item').forEach(el => {{
+        el.addEventListener('click', e => {{
+            if (e.target.closest('.del')) return;
+            window.location.href = el.dataset.href;
+        }});
+    }});
+    content.querySelectorAll('.del').forEach(el => {{
+        el.addEventListener('click', e => {{
+            e.stopPropagation();
+            window.location.href = el.dataset.del;
+        }});
+    }});
+}}
+
+const clearBtn = document.getElementById('clear-btn');
+const clearMenu = document.getElementById('clear-menu');
+clearBtn.addEventListener('click', e => {{
+    e.stopPropagation();
+    clearMenu.classList.toggle('open');
+}});
+clearMenu.querySelectorAll('button').forEach(b => {{
+    b.addEventListener('click', () => {{
+        window.location.href = 'rhodium://history-clear?range=' + b.dataset.range;
+    }});
+}});
+document.addEventListener('click', () => clearMenu.classList.remove('open'));
+
+document.getElementById('search').addEventListener('input', render);
+render();
+</script>
+</body>
+</html>"""

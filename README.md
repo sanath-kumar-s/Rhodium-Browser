@@ -32,7 +32,7 @@ built-in features — no external browser required.
 | 🗂️ **Tabbed Browsing** | Multiple tabs with pin, reorder, close-others/right, and "all tabs" overview. |
 | 🏠 **Speed-Dial Home** | Customizable shortcut tiles (add / edit / delete) with favicons. |
 | 🔖 **Bookmarks** | Save, manage, and open bookmarks with filled/empty indicators. |
-| 🕘 **History** | Auto-recorded browsing history with a searchable menu and clear option. |
+| 🕘 **History** | Persistent SQLite history with a dedicated `rhodium://history` page (grouped by date, search, per-item & range delete). |
 | ⬇️ **Downloads Manager** | Full download UI with progress, pause/resume/cancel, file-type icons, and history. |
 | 🔍 **Find in Page** | In-page search bar with next/previous navigation. |
 | 🔎 **Address Suggestions** | Live URL/bookmark/history suggestions as you type. |

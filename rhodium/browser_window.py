@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import threading
 import urllib.parse
 from pathlib import Path
 from datetime import datetime
@@ -21,7 +22,7 @@ from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 
 from rhodium.utils import icon
-from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html, get_downloads_page_html
+from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html, get_downloads_page_html, get_history_page_html
 from rhodium.settings_dialog import SettingsDialog
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
@@ -451,6 +452,7 @@ class AdvancedBrowser(QMainWindow):
         self._add_shortcut("Ctrl+F",       self.open_find_dialog)
         self._add_shortcut("Ctrl+D",       self.add_bookmark)
         self._add_shortcut("Ctrl+J",       self.open_downloads_page)
+        self._add_shortcut("Ctrl+H",       self.open_history_page)
         self._add_shortcut("Ctrl+,",       self.open_settings)
         self._add_shortcut("Ctrl+N",       self.open_new_window)
         self._add_shortcut("Ctrl+Q",       self.close)
@@ -670,6 +672,8 @@ class AdvancedBrowser(QMainWindow):
 
         hist_menu = m.addMenu(icon("history.png"), "History")
         hist_menu.aboutToShow.connect(lambda: self._populate_history_submenu(hist_menu))
+        hist_menu.addAction(icon("history.png"), "Open History Page",
+                            self.open_history_page).setShortcut(QKeySequence("Ctrl+H"))
 
         m.addSeparator()
 
@@ -752,6 +756,8 @@ class AdvancedBrowser(QMainWindow):
             QTimer.singleShot(50, lambda: self.url_bar.setFocus() or self.url_bar.selectAll())
         elif url.split("?")[0] == "rhodium://downloads":
             self.show_downloads_in_view(view)
+        elif url.split("?")[0] == "rhodium://history":
+            self.show_history_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -834,6 +840,8 @@ class AdvancedBrowser(QMainWindow):
             view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
         elif url.split("?")[0] == "rhodium://downloads":
             self.show_downloads_in_view(view)
+        elif url.split("?")[0] == "rhodium://history":
+            self.show_history_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -845,11 +853,16 @@ class AdvancedBrowser(QMainWindow):
             view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
         elif url.split("?")[0] == "rhodium://downloads":
             self.show_downloads_in_view(view)
+        elif url.split("?")[0] == "rhodium://history":
+            self.show_history_in_view(view)
         else:
             self._load_in_view(url, view)
 
     def open_downloads_page(self):
         self.load_url("rhodium://downloads")
+
+    def open_history_page(self):
+        self.load_url("rhodium://history")
 
     def show_downloads_in_view(self, view):
         """Render the internal rhodium://downloads page in a tab."""
@@ -894,6 +907,63 @@ class AdvancedBrowser(QMainWindow):
                     html = get_downloads_page_html(
                         self.download_manager.get_page_data_json())
                     view.setHtml(html, QUrl("rhodium://downloads"))
+
+    # ── History page ──────────────────────────────────────────────────────────
+    def show_history_in_view(self, view):
+        """Render the internal rhodium://history page in a tab."""
+        try:
+            history = self.database.get_history()
+        except Exception:
+            history = []
+        html = get_history_page_html(json.dumps(history, ensure_ascii=False))
+        view.setHtml(html, QUrl("rhodium://history"))
+        idx = self.tab_widget.indexOf(view)
+        if idx >= 0:
+            self.tab_widget.setTabText(idx, "History")
+            self.tab_widget.setTabToolTip(idx, "History")
+            self.tab_widget.setTabIcon(idx, icon("history.png"))
+
+    def refresh_history_tabs(self):
+        for i in range(self.tab_widget.count()):
+            view = self.tab_widget.widget(i)
+            if isinstance(view, QWebEngineView):
+                if view.url().toString().split("?")[0] == "rhodium://history":
+                    try:
+                        history = self.database.get_history()
+                    except Exception:
+                        history = []
+                    html = get_history_page_html(
+                        json.dumps(history, ensure_ascii=False))
+                    view.setHtml(html, QUrl("rhodium://history"))
+
+    def handle_history_action(self, url: str, action: str):
+        if action == "delete" and url:
+            self.database.delete_history_item(url)
+            self.refresh_history_tabs()
+            self.status_label.setText("History item removed.")
+        elif action == "open" and url:
+            self.load_url(url)
+
+    def handle_history_clear(self, range_key: str):
+        labels = {
+            "hour": "the last hour",
+            "today": "today's history",
+            "yesterday": "today's and yesterday's history",
+            "all": "all history",
+        }
+        label = labels.get(range_key, "history")
+        reply = QMessageBox.question(
+            self, "Clear History",
+            f"Clear {label}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self.database.clear_history_range(range_key)
+        if range_key == "all":
+            self.history = []
+            self.save_history()
+        self.refresh_history_tabs()
+        self.status_label.setText(f"Cleared {label}.")
 
     def get_current_view(self):
         return self.tab_widget.currentWidget()
@@ -1223,8 +1293,12 @@ class AdvancedBrowser(QMainWindow):
 
         # Record the visit in the local SQLite suggestion database.
         # Internal/invalid URLs are filtered inside record_visit().
+        # Run off the UI thread so page loading is never blocked.
         if ok:
-            self.database.record_visit(url, title)
+            threading.Thread(
+                target=self.database.record_visit,
+                args=(url, title), daemon=True
+            ).start()
 
         if idx >= 0:
             short = title[:28] + "…" if len(title) > 28 else title
@@ -1463,6 +1537,9 @@ class AdvancedBrowser(QMainWindow):
             return
         if url_str.split("?")[0] == "rhodium://downloads":
             self.tab_widget.setTabIcon(idx, icon("download.png"))
+            return
+        if url_str.split("?")[0] == "rhodium://history":
+            self.tab_widget.setTabIcon(idx, icon("history.png"))
             return
         if "google.com/search" in url_str:
             self.tab_widget.setTabIcon(idx, icon("search.png"))
