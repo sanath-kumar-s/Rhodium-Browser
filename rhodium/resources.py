@@ -7,24 +7,26 @@ from urllib.parse import urlparse
 def get_stylesheet() -> str:
     return """
         /* =========================================================
-        RHODIUM — PROFESSIONAL DARK BROWSER UI
+        RHODIUM — PROFESSIONAL PREMIUM DARK BROWSER UI
         ========================================================= */
 
         * {
-            font-family: "Segoe UI", "Inter", Arial, sans-serif;
+            font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 12px;
         }
 
         QMainWindow {
-            background: #0b0d10;
-            color: #e8eaed;
+            background: #0B0D10;
+            color: #E8ECF2;
         }
 
         QWidget#BrowserRoot {
-            background: #0b0d10;
+            background: #0B0D10;
+            border: 1px solid #252B34;
         }
 
         QWidget#BrowserSurface {
-            background: #0b0d10;
+            background: #0B0D10;
         }
 
 
@@ -33,17 +35,13 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QToolBar#NavBar {
-            background: #111318;
-
+            background: #12151A;
             border: none;
-            border-bottom: 1px solid #20242b;
-
-            padding: 5px 7px;
-
+            border-bottom: 1px solid #252B34;
+            padding: 4px 6px;
             spacing: 2px;
-
-            min-height: 46px;
-            max-height: 46px;
+            min-height: 42px;
+            max-height: 42px;
         }
 
 
@@ -53,32 +51,28 @@ def get_stylesheet() -> str:
 
         QPushButton#NavBtn {
             background: transparent;
-
             border: none;
-            border-radius: 8px;
-
-            color: #9da4af;
-
+            border-radius: 6px;
+            color: #9AA3B2;
             padding: 6px;
-
-            min-width: 34px;
-            min-height: 34px;
-            max-width: 34px;
-            max-height: 34px;
+            min-width: 32px;
+            min-height: 32px;
+            max-width: 32px;
+            max-height: 32px;
         }
 
         QPushButton#NavBtn:hover {
-            background: #1c2027;
-            color: #e7eaf0;
+            background: #171C23;
+            color: #E8ECF2;
         }
 
         QPushButton#NavBtn:pressed {
-            background: #272c34;
+            background: #1B2028;
             color: #ffffff;
         }
 
         QPushButton#NavBtn:disabled {
-            color: #4c525c;
+            color: #687282;
         }
 
 
@@ -87,32 +81,25 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QLineEdit#UrlBar {
-            background: #191c21;
-
-            color: #e7e9ed;
-
-            border: 1px solid #292e36;
+            background: #101318;
+            color: #E8ECF2;
+            border: 1px solid #252B34;
             border-radius: 9px;
-
-            padding: 7px 14px;
-
+            padding: 4px 10px;
             font-size: 13px;
-
-            selection-background-color: #355f98;
-            selection-color: #ffffff;
+            selection-background-color: #6EA8FF;
+            selection-color: #0B0D10;
         }
 
         QLineEdit#UrlBar:hover {
-            background: #1c2026;
-            border-color: #353b45;
+            background: #171C23;
+            border-color: #303846;
         }
 
         QLineEdit#UrlBar:focus {
-            background: #1b1f25;
-
-            border: 1px solid #456b9f;
-
-            selection-background-color: #365f98;
+            background: #171C23;
+            border: 1px solid #6EA8FF;
+            selection-background-color: #6EA8FF;
         }
 
 
@@ -121,99 +108,99 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QWidget#BrowserTabs {
-            background: #0b0d10;
+            background: #0E1115;
             border: none;
         }
 
         QWidget#TabStrip {
-            background: #0e1014;
-            border-bottom: 1px solid #1c2129;
+            background: #0E1115;
+            border-bottom: 1px solid #252B34;
         }
 
         QTabBar#RhodiumTabBar {
             background: transparent;
             border: none;
             qproperty-drawBase: 0;
-            min-height: 38px;
-            max-height: 38px;
+            min-height: 36px;
+            max-height: 36px;
             font-size: 12px;
             font-weight: 500;
         }
 
         QTabBar#RhodiumTabBar::tab {
             background: transparent;
-            color: #8b939f;
+            color: #9AA3B2;
             border: none;
-            border-radius: 8px;
-            padding: 0 6px;
-            margin-top: 4px;
-            margin-bottom: 4px;
-            margin-right: 2px;
-            min-width: 110px;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+            padding: 0 8px;
+            margin-top: 3px;
+            margin-bottom: 3px;
+            margin-right: 3px;
+            min-width: 90px;
             max-width: 220px;
             min-height: 30px;
             max-height: 30px;
         }
 
         QTabBar#RhodiumTabBar::tab:hover {
-            background: #1a1f27;
-            color: #c8ced8;
+            background: #161B21;
+            color: #E8ECF2;
         }
 
         QTabBar#RhodiumTabBar::tab:selected {
-            background: #2b323d;
-            color: #eef1f5;
+            background: #1B2028;
+            color: #E8ECF2;
         }
 
         QTabBar#RhodiumTabBar::close-button {
             image: url(style/icons/close (2).png);
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
             subcontrol-position: right;
-            margin-left: 6px;
+            margin-left: 4px;
             margin-right: 2px;
             border-radius: 4px;
             padding: 2px;
         }
 
         QTabBar#RhodiumTabBar::close-button:hover {
-            background: #2a3039;
-        }
-
-        QTabBar#RhodiumTabBar::close-button:pressed {
-            background: #353c47;
+            background: #303846;
         }
 
         QTabBar#RhodiumTabBar QToolButton {
             background: transparent;
             border: none;
-            border-radius: 6px;
-            color: #9aa3b0;
+            border-radius: 4px;
+            color: #9AA3B2;
             margin: 4px 2px;
             min-width: 20px;
             max-width: 20px;
         }
 
         QTabBar#RhodiumTabBar QToolButton:hover {
-            background: #1a1f27;
-            color: #eef1f5;
+            background: #171C23;
+            color: #E8ECF2;
         }
 
         QToolButton#NewTabButton {
             background: transparent;
             border: none;
-            border-radius: 14px;
+            border-radius: 6px;
             padding: 0;
-            margin-top: 5px;
-            color: #9aa3b0;
+            margin-top: 4px;
+            margin-bottom: 4px;
+            color: #9AA3B2;
         }
 
         QToolButton#NewTabButton:hover {
-            background: #1a1f27;
+            background: #171C23;
         }
 
         QToolButton#NewTabButton:pressed {
-            background: #242a33;
+            background: #1B2028;
         }
 
 
@@ -224,129 +211,125 @@ def get_stylesheet() -> str:
         QToolButton#DownloadButton {
             background: transparent;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             padding: 0;
             margin: 0 2px;
         }
 
         QToolButton#DownloadButton:hover {
-            background: #1a1f27;
+            background: #171C23;
         }
 
         QToolButton#DownloadButton:pressed {
-            background: #242a33;
+            background: #1B2028;
         }
 
         QFrame#DownloadPopup {
-            background: #14171d;
-            border: 1px solid #2a313c;
-            border-radius: 12px;
+            background: #101318;
+            border: 1px solid #252B34;
+            border-radius: 8px;
         }
 
         QFrame#DownloadPanel {
-            background: #14171d;
-            border: 1px solid #2a313c;
-            border-radius: 12px;
+            background: #101318;
+            border: 1px solid #252B34;
+            border-radius: 8px;
         }
 
         QLabel#PopupHeader {
-            color: #eef1f5;
+            color: #E8ECF2;
             font-size: 13px;
             font-weight: 600;
-            padding: 12px 14px 10px 14px;
+            padding: 10px 12px;
         }
 
         QFrame#PanelDivider {
-            background: #232933;
+            background: #252B34;
             border: none;
         }
 
         QFrame#DownloadPopupItem {
-            background: #181c23;
-            border: 1px solid #252b34;
-            border-radius: 10px;
+            background: #12151A;
+            border: 1px solid #252B34;
+            border-radius: 6px;
         }
 
         QFrame#DownloadPopupItem:hover {
-            border-color: #333b47;
+            border-color: #303846;
         }
 
         QFrame#DownloadMenuRow {
             background: transparent;
             border: none;
-            border-radius: 8px;
-        }
-
-        QFrame#DownloadMenuRow:hover {
-            background: #1d222b;
-        }
-
-        QLabel#DownloadItemIcon {
-            font-size: 15px;
-            background: #222730;
             border-radius: 6px;
         }
 
+        QFrame#DownloadMenuRow:hover {
+            background: #171C23;
+        }
+
+        QLabel#DownloadItemIcon {
+            font-size: 14px;
+            background: #171C23;
+            border-radius: 4px;
+        }
+
         QLabel#DownloadItemName {
-            color: #eef1f5;
+            color: #E8ECF2;
             font-size: 12px;
             font-weight: 600;
         }
 
         QLabel#DownloadItemStatus {
-            color: #8b939f;
+            color: #9AA3B2;
             font-size: 11px;
         }
 
         QLabel#DownloadItemSpeed {
-            color: #6f7887;
+            color: #687282;
             font-size: 11px;
         }
 
         QProgressBar#DownloadProgressBar {
-            background: #222730;
+            background: #171C23;
             border: none;
             border-radius: 2px;
         }
 
         QProgressBar#DownloadProgressBar::chunk {
-            background: #4c8dff;
+            background: #6EA8FF;
             border-radius: 2px;
         }
 
         QToolButton#DownloadMiniBtn {
-            background: #242932;
-            color: #d5dae3;
+            background: #171C23;
+            color: #9AA3B2;
             border: none;
-            border-radius: 6px;
-            font-size: 12px;
+            border-radius: 4px;
+            font-size: 11px;
         }
 
         QToolButton#DownloadMiniBtn:hover {
-            background: #2e3540;
-            color: #ffffff;
-        }
-
-        QToolButton#DownloadMiniBtn:pressed {
-            background: #37404e;
+            background: #1B2028;
+            color: #E8ECF2;
         }
 
         QLabel#PanelFooter {
-            color: #8ab4f8;
+            color: #6EA8FF;
             font-size: 12px;
             font-weight: 600;
-            padding: 11px;
-            border-top: 1px solid #232933;
+            padding: 10px;
+            border-top: 1px solid #252B34;
         }
 
         QLabel#PanelFooter:hover {
-            background: #1d222b;
+            background: #171C23;
         }
 
         QLabel#DownloadEmpty {
-            color: #636b78;
+            color: #687282;
             font-size: 12px;
-            padding: 24px;
+            padding: 20px;
         }
 
         QScrollArea#DownloadScroll {
@@ -357,36 +340,20 @@ def get_stylesheet() -> str:
         QFrame#DownloadPopup QScrollBar:vertical,
         QFrame#DownloadPanel QScrollBar:vertical {
             background: transparent;
-            width: 8px;
-            margin: 6px 3px;
+            width: 6px;
+            margin: 4px 2px;
         }
 
         QFrame#DownloadPopup QScrollBar::handle:vertical,
         QFrame#DownloadPanel QScrollBar::handle:vertical {
-            background: #2e3540;
+            background: #252B34;
             border-radius: 2px;
-            min-height: 30px;
+            min-height: 20px;
         }
 
         QFrame#DownloadPopup QScrollBar::handle:vertical:hover,
         QFrame#DownloadPanel QScrollBar::handle:vertical:hover {
-            background: #3b4450;
-        }
-
-        QFrame#DownloadPopup QScrollBar::add-line:vertical,
-        QFrame#DownloadPanel QScrollBar::add-line:vertical,
-        QFrame#DownloadPopup QScrollBar::sub-line:vertical,
-        QFrame#DownloadPanel QScrollBar::sub-line:vertical {
-            height: 0;
-            background: none;
-            border: none;
-        }
-
-        QFrame#DownloadPopup QScrollBar::add-page:vertical,
-        QFrame#DownloadPanel QScrollBar::add-page:vertical,
-        QFrame#DownloadPopup QScrollBar::sub-page:vertical,
-        QFrame#DownloadPanel QScrollBar::sub-page:vertical {
-            background: none;
+            background: #303846;
         }
 
 
@@ -395,9 +362,9 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QFrame#SuggestionPopup {
-            background: #14171d;
-            border: 1px solid #2a313c;
-            border-radius: 10px;
+            background: #101318;
+            border: 1px solid #252B34;
+            border-radius: 8px;
         }
 
         QListWidget#SuggestionList {
@@ -408,16 +375,16 @@ def get_stylesheet() -> str:
 
         QListWidget#SuggestionList::item {
             background: transparent;
-            border-radius: 8px;
+            border-radius: 6px;
             margin: 1px 2px;
         }
 
         QListWidget#SuggestionList::item:hover {
-            background: #1d222b;
+            background: #171C23;
         }
 
         QListWidget#SuggestionList::item:selected {
-            background: #2b323d;
+            background: #1B2028;
         }
 
         QWidget#SuggestionRow {
@@ -425,14 +392,14 @@ def get_stylesheet() -> str:
         }
 
         QLabel#SuggestionPrimary {
-            color: #eef1f5;
-            font-size: 13px;
+            color: #E8ECF2;
+            font-size: 12px;
             font-weight: 500;
             background: transparent;
         }
 
         QLabel#SuggestionSecondary {
-            color: #8b939f;
+            color: #9AA3B2;
             font-size: 11px;
             background: transparent;
         }
@@ -447,23 +414,18 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QStatusBar {
-            background: #111318;
-
-            border-top: 1px solid #20242b;
-
-            color: #707782;
-
+            background: #12151A;
+            border-top: 1px solid #252B34;
+            color: #687282;
             min-height: 22px;
             max-height: 22px;
         }
 
         QLabel#StatusLabel {
-            color: #737a85;
-
+            color: #687282;
             font-size: 11px;
-
-            padding-left: 8px;
-            padding-right: 8px;
+            padding-left: 6px;
+            padding-right: 6px;
         }
 
 
@@ -472,46 +434,35 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QMenu {
-            background: #181b20;
-
-            color: #e3e6eb;
-
-            border: 1px solid #30353d;
-            border-radius: 9px;
-
-            padding: 5px;
-
+            background: #101318;
+            color: #E8ECF2;
+            border: 1px solid #252B34;
+            border-radius: 6px;
+            padding: 4px;
             font-size: 12px;
         }
 
         QMenu::item {
-            padding: 8px 32px 8px 12px;
-
-            border-radius: 6px;
-
+            padding: 6px 28px 6px 12px;
+            border-radius: 4px;
             margin: 1px;
         }
 
         QMenu::item:selected {
-            background: #272c34;
+            background: #1B2028;
             color: #ffffff;
         }
 
         QMenu::separator {
             height: 1px;
-
-            background: #2b3037;
-
-            margin: 5px 8px;
+            background: #252B34;
+            margin: 4px 6px;
         }
 
         QMenu::section {
-            color: #747b86;
-
+            color: #687282;
             font-size: 10px;
-
-            padding: 6px 12px 4px;
-
+            padding: 4px 12px 2px;
             font-weight: 600;
         }
 
@@ -520,26 +471,26 @@ def get_stylesheet() -> str:
         QPushButton#WinCloseBtn {
             border: none;
             background: transparent;
-            color: #aaaaaa;
-            font-size: 15px;
-            border-radius: 5px;
+            color: #9AA3B2;
+            font-size: 14px;
+            border-radius: 4px;
         }
 
         QPushButton#WinMinBtn:hover,
         QPushButton#WinMaxBtn:hover {
-            background: #2a2a2a;
-            color: white;
+            background: #171C23;
+            color: #E8ECF2;
         }
 
         QPushButton#WinCloseBtn:hover {
-            background: #e81123;
+            background: #E06C75;
             color: white;
         }
 
         QPushButton#WinMinBtn:pressed,
         QPushButton#WinMaxBtn:pressed,
         QPushButton#WinCloseBtn:pressed {
-            background: #444444;
+            background: #1B2028;
         }
 
 
@@ -548,19 +499,17 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QDialog {
-            background: #111318;
-            color: #e1e4e8;
+            background: #101318;
+            color: #E8ECF2;
         }
 
         QLabel {
-            color: #b9bec7;
+            color: #9AA3B2;
         }
 
         QLabel#SettingsTitle {
-            color: #f2f4f7;
-
-            font-size: 18px;
-
+            color: #E8ECF2;
+            font-size: 16px;
             font-weight: 600;
         }
 
@@ -570,23 +519,19 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QLineEdit {
-            background: #181b21;
-
-            color: #e1e4e8;
-
-            border: 1px solid #2b2f36;
-
-            border-radius: 7px;
-
-            padding: 7px 10px;
+            background: #101318;
+            color: #E8ECF2;
+            border: 1px solid #252B34;
+            border-radius: 6px;
+            padding: 5px 8px;
         }
 
         QLineEdit:hover {
-            border-color: #383d46;
+            border-color: #303846;
         }
 
         QLineEdit:focus {
-            border-color: #426cae;
+            border-color: #6EA8FF;
         }
 
 
@@ -595,41 +540,33 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QPushButton {
-            background: #1b1e24;
-
-            color: #c6cad1;
-
-            border: 1px solid #2b2f36;
-
-            border-radius: 7px;
-
-            padding: 7px 14px;
-
+            background: #171C23;
+            color: #9AA3B2;
+            border: 1px solid #252B34;
+            border-radius: 6px;
+            padding: 6px 12px;
             font-size: 12px;
         }
 
         QPushButton:hover {
-            background: #252930;
-
-            color: #ffffff;
-
-            border-color: #383d46;
+            background: #1B2028;
+            color: #E8ECF2;
+            border-color: #303846;
         }
 
         QPushButton:pressed {
-            background: #30353e;
+            background: #252B34;
         }
 
         QPushButton#PrimaryBtn {
-            background: #315f9d;
-
-            color: #ffffff;
-
+            background: #6EA8FF;
+            color: #0B0D10;
+            font-weight: 600;
             border: none;
         }
 
         QPushButton#PrimaryBtn:hover {
-            background: #3b6fae;
+            background: #82B5FF;
         }
 
 
@@ -638,26 +575,21 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QCheckBox {
-            color: #bfc4cc;
-
+            color: #9AA3B2;
             spacing: 6px;
         }
 
         QCheckBox::indicator {
-            width: 15px;
-            height: 15px;
-
-            border-radius: 4px;
-
-            border: 1px solid #3a3f48;
-
-            background: #181b21;
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            border: 1px solid #252B34;
+            background: #101318;
         }
 
         QCheckBox::indicator:checked {
-            background: #426cae;
-
-            border-color: #426cae;
+            background: #6EA8FF;
+            border-color: #6EA8FF;
         }
 
 
@@ -667,20 +599,16 @@ def get_stylesheet() -> str:
 
         QSpinBox,
         QComboBox {
-            background: #181b21;
-
-            color: #e1e4e8;
-
-            border: 1px solid #2b2f36;
-
-            border-radius: 7px;
-
-            padding: 6px 8px;
+            background: #101318;
+            color: #E8ECF2;
+            border: 1px solid #252B34;
+            border-radius: 6px;
+            padding: 4px 6px;
         }
 
         QSpinBox:focus,
         QComboBox:focus {
-            border-color: #426cae;
+            border-color: #6EA8FF;
         }
 
 
@@ -689,25 +617,20 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QListWidget {
-            background: #181b21;
-
-            color: #d0d4da;
-
-            border: 1px solid #2b2f36;
-
-            border-radius: 7px;
-
+            background: #101318;
+            color: #E8ECF2;
+            border: 1px solid #252B34;
+            border-radius: 6px;
             padding: 4px;
         }
 
         QListWidget::item {
-            padding: 6px;
-
-            border-radius: 5px;
+            padding: 4px;
+            border-radius: 4px;
         }
 
         QListWidget::item:selected {
-            background: #292f38;
+            background: #1B2028;
         }
 
 
@@ -716,13 +639,10 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QTextEdit {
-            background: #181b21;
-
-            color: #d0d4da;
-
-            border: 1px solid #2b2f36;
-
-            border-radius: 7px;
+            background: #101318;
+            color: #E8ECF2;
+            border: 1px solid #252B34;
+            border-radius: 6px;
         }
 
 
@@ -731,33 +651,26 @@ def get_stylesheet() -> str:
         ========================================================= */
 
         QFrame#FindBar {
-            background: #15171c;
-
-            border-top: 1px solid #292d34;
-
-            max-height: 44px;
+            background: #12151A;
+            border-top: 1px solid #252B34;
+            max-height: 40px;
         }
 
         QLineEdit#FindInput {
-            background: #1b1e24;
-
-            border-radius: 7px;
-
-            padding: 5px 10px;
-
-            max-width: 320px;
+            background: #101318;
+            border-radius: 6px;
+            padding: 4px 8px;
+            max-width: 280px;
         }
 
         QPushButton#FindClose {
             background: transparent;
-
             border: none;
-
-            border-radius: 5px;
+            border-radius: 4px;
         }
 
         QPushButton#FindClose:hover {
-            background: #252930;
+            background: #171C23;
         }
         """
 
@@ -847,8 +760,7 @@ def get_home_page_html(shortcuts=None) -> str:
             </span>
             <span class="shortcut-label">Add shortcut</span>
         </button>
-    """
-
+    """    
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -865,174 +777,107 @@ def get_home_page_html(shortcuts=None) -> str:
 html, body {{
     width: 100%;
     height: 100%;
+    background: #0B0D10;
 }}
 
 body {{
-    position: relative;
-    overflow: hidden;
-    color: #eef1f6;
-    font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #07080b;
+    color: #E8ECF2;
+    font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
     user-select: none;
-}}
-
-.bg {{
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    overflow: hidden;
-}}
-
-.bg-grid {{
-    position: absolute;
-    inset: 0;
-    background-image:
-        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
-    background-size: 56px 56px;
-    mask-image: radial-gradient(circle at 50% 42%, black 0%, transparent 72%);
-    opacity: .55;
-}}
-
-.bg-orb {{
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    opacity: .55;
-    animation: drift 18s ease-in-out infinite alternate;
-}}
-
-.bg-orb.one {{
-    width: 420px;
-    height: 420px;
-    top: -120px;
-    left: 18%;
-    background: radial-gradient(circle, rgba(88, 118, 168, .35), transparent 70%);
-}}
-
-.bg-orb.two {{
-    width: 360px;
-    height: 360px;
-    bottom: -80px;
-    right: 12%;
-    background: radial-gradient(circle, rgba(120, 132, 156, .22), transparent 70%);
-    animation-delay: -6s;
-}}
-
-.bg-orb.three {{
-    width: 280px;
-    height: 280px;
-    top: 38%;
-    left: 58%;
-    background: radial-gradient(circle, rgba(70, 107, 159, .18), transparent 70%);
-    animation-delay: -12s;
-}}
-
-@keyframes drift {{
-    from {{ transform: translate3d(0, 0, 0) scale(1); }}
-    to   {{ transform: translate3d(24px, -18px, 0) scale(1.08); }}
-}}
-
-.page {{
-    position: relative;
-    z-index: 1;
-    min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 48px 24px 64px;
+}}
+
+.page {{
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
 }}
 
 .shell {{
-    width: min(760px, calc(100vw - 48px));
+    width: min(700px, 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    animation: rise .55s cubic-bezier(.22, 1, .36, 1) both;
+    gap: 32px;
+    animation: rise .4s cubic-bezier(.22, 1, .36, 1) both;
 }}
 
 @keyframes rise {{
-    from {{ opacity: 0; transform: translateY(18px); }}
+    from {{ opacity: 0; transform: translateY(12px); }}
     to   {{ opacity: 1; transform: translateY(0); }}
 }}
 
 .hero {{
     text-align: center;
-    margin-bottom: 32px;
 }}
 
 .brand {{
     display: inline-flex;
     align-items: center;
-    gap: 14px;
-    padding: 10px 18px 10px 10px;
-    border-radius: 999px;
-    background: rgba(255,255,255,.03);
-    border: 1px solid rgba(255,255,255,.06);
-    backdrop-filter: blur(12px);
+    gap: 10px;
+    padding: 6px 12px;
 }}
 
 .brand-mark {{
-    width: 42px;
-    height: 42px;
+    width: 28px;
+    height: 28px;
     display: grid;
     place-items: center;
-    border-radius: 10px;
-    background: linear-gradient(145deg, #2a3444, #171d28);
-    border: 1px solid rgba(156, 183, 216, .28);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 24px rgba(0,0,0,.28);
+    border-radius: 6px;
+    background: #1B2028;
+    border: 1px solid #303846;
 }}
 
 .brand-mark svg {{
-    width: 22px;
-    height: 22px;
-    stroke: #b8c9de;
+    width: 16px;
+    height: 16px;
+    stroke: #6EA8FF;
 }}
 
 .brand-name {{
     font-size: 22px;
     font-weight: 600;
-    letter-spacing: -.03em;
-    color: #f0f3f7;
+    letter-spacing: -.02em;
+    color: #E8ECF2;
 }}
 
 .search-panel {{
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }}
 
 .search {{
     display: flex;
     align-items: center;
-    height: 56px;
-    padding: 0 18px;
-    border-radius: 16px;
-    background: rgba(18, 21, 27, .72);
-    border: 1px solid rgba(255,255,255,.08);
-    box-shadow:
-        0 18px 40px rgba(0,0,0,.28),
-        inset 0 1px 0 rgba(255,255,255,.04);
-    backdrop-filter: blur(18px);
-    transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+    height: 52px;
+    padding: 0 16px;
+    border-radius: 12px;
+    background: #101318;
+    border: 1px solid #252B34;
+    transition: border-color .15s ease, background .15s ease;
 }}
 
 .search:hover {{
-    border-color: rgba(255,255,255,.12);
+    background: #171C23;
+    border-color: #303846;
 }}
 
 .search:focus-within {{
-    border-color: rgba(126, 184, 255, .55);
-    box-shadow:
-        0 18px 40px rgba(0,0,0,.28),
-        0 0 0 4px rgba(70, 107, 159, .14),
-        inset 0 1px 0 rgba(255,255,255,.05);
-    transform: translateY(-1px);
+    background: #171C23;
+    border-color: #6EA8FF;
 }}
 
 .search-icon {{
-    width: 20px;
-    height: 20px;
-    margin-right: 14px;
-    color: #7d8796;
+    width: 18px;
+    height: 18px;
+    margin-right: 12px;
+    color: #9AA3B2;
     flex-shrink: 0;
 }}
 
@@ -1041,51 +886,52 @@ body {{
     border: none;
     outline: none;
     background: transparent;
-    color: #f3f5f8;
-    font-size: 15px;
+    color: #E8ECF2;
+    font-size: 14px;
 }}
 
 .search input::placeholder {{
-    color: #727b89;
+    color: #687282;
 }}
 
 .search-hint {{
-    margin-top: 10px;
     text-align: center;
-    color: #5f6877;
-    font-size: 12px;
+    color: #687282;
+    font-size: 11px;
 }}
 
 .shortcuts-section {{
     width: 100%;
-    margin-top: 34px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }}
 
 .section-head {{
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 14px;
-    padding: 0 4px;
+    padding: 0 2px;
 }}
 
 .section-title {{
-    color: #8b95a5;
-    font-size: 12px;
+    color: #9AA3B2;
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: .08em;
+    letter-spacing: .05em;
     text-transform: uppercase;
 }}
 
 .section-count {{
-    color: #5d6674;
-    font-size: 12px;
+    color: #687282;
+    font-size: 11px;
 }}
 
 .shortcuts {{
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
     gap: 12px;
+    width: 100%;
 }}
 
 .shortcut-card {{
@@ -1099,65 +945,60 @@ body {{
 .shortcut-main,
 .shortcut-card.add {{
     width: 100%;
+    height: 98px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    padding: 14px 10px 12px;
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,.06);
-    background: rgba(255,255,255,.025);
-    color: #9aa3b2;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #252B34;
+    background: #101318;
+    color: #9AA3B2;
     cursor: pointer;
-    transition:
-        transform .18s ease,
-        border-color .18s ease,
-        background .18s ease,
-        color .18s ease,
-        box-shadow .18s ease;
+    transition: border-color .15s, background .15s, color .15s;
 }}
 
 .shortcut-card.add {{
     border-style: dashed;
-    background: rgba(255,255,255,.015);
 }}
 
 .shortcut-main:hover,
 .shortcut-card.add:hover {{
-    transform: translateY(-3px);
-    border-color: rgba(255,255,255,.12);
-    background: rgba(255,255,255,.045);
-    color: #d7dde7;
-    box-shadow: 0 14px 28px rgba(0,0,0,.22);
+    border-color: #303846;
+    background: #171C23;
+    color: #E8ECF2;
 }}
 
 .shortcut-icon {{
-    width: 52px;
-    height: 52px;
+    width: 40px;
+    height: 40px;
     display: grid;
     place-items: center;
-    border-radius: 14px;
-    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 6px;
+    background: #171C23;
+    border: 1px solid #252B34;
 }}
 
 .shortcut-icon svg {{
-    width: 22px;
-    height: 22px;
-    stroke: #aeb7c4;
+    width: 18px;
+    height: 18px;
+    stroke: #9AA3B2;
 }}
 
 .shortcut-favicon {{
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
     object-fit: contain;
 }}
 
 .shortcut-label {{
     max-width: 100%;
     font-size: 12px;
-    line-height: 1.25;
+    font-weight: 500;
+    line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1165,8 +1006,8 @@ body {{
 
 .shortcut-actions {{
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 4px;
+    right: 4px;
     display: none;
     gap: 4px;
 }}
@@ -1176,41 +1017,35 @@ body {{
 }}
 
 .shortcut-action {{
-    border: 1px solid rgba(255,255,255,.08);
-    background: rgba(12, 14, 18, .92);
-    color: #b4bcc8;
-    border-radius: 8px;
-    padding: 3px 7px;
+    border: 1px solid #252B34;
+    background: #0B0D10;
+    color: #9AA3B2;
+    border-radius: 4px;
+    padding: 2px 6px;
     font-size: 10px;
     cursor: pointer;
 }}
 
 .shortcut-action.delete {{
-    color: #ff8f8f;
+    color: #E06C75;
 }}
 
 .shortcut-action:hover {{
-    background: rgba(255,255,255,.08);
+    background: #171C23;
+    color: #E8ECF2;
 }}
 
 .footer {{
-    margin-top: 36px;
     text-align: center;
-    color: #4d5664;
+    color: #687282;
     font-size: 11px;
-    letter-spacing: .24em;
+    letter-spacing: 2px;
     text-transform: uppercase;
+    margin-top: 16px;
 }}
 </style>
 </head>
 <body>
-
-<div class="bg" aria-hidden="true">
-    <div class="bg-grid"></div>
-    <div class="bg-orb one"></div>
-    <div class="bg-orb two"></div>
-    <div class="bg-orb three"></div>
-</div>
 
 <main class="page">
     <div class="shell">
@@ -1329,6 +1164,7 @@ body {{
 </body>
 </html>"""
 
+
 def get_offline_page_html(failed_url="") -> str:
     """
     Generate the Rhodium offline/error page.
@@ -1373,215 +1209,122 @@ def get_offline_page_html(failed_url="") -> str:
         body {{
             width: 100%;
             height: 100%;
+            background: #0B0D10;
         }}
 
         body {{
-            background:
-                radial-gradient(
-                    circle at 50% 38%,
-                    rgba(55, 77, 110, 0.10) 0%,
-                    rgba(15, 17, 21, 0.04) 28%,
-                    transparent 52%
-                ),
-                #0b0c0f;
-
-            color: #e7e9ed;
-
-            font-family:
-                "Segoe UI",
-                Inter,
-                -apple-system,
-                BlinkMacSystemFont,
-                sans-serif;
-
+            color: #E8ECF2;
+            font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
-
             height: 100vh;
-
             overflow: hidden;
             user-select: none;
         }}
 
         .container {{
-            width: 520px;
-            max-width: calc(100vw - 60px);
-
+            width: 480px;
+            max-width: calc(100vw - 40px);
             display: flex;
             flex-direction: column;
             align-items: center;
-
             text-align: center;
-
-            transform: translateY(-20px);
         }}
 
-        /* =========================================================
-           ICON
-           ========================================================= */
-
         .icon-container {{
-            width: 72px;
-            height: 72px;
-
+            width: 60px;
+            height: 60px;
             display: flex;
             align-items: center;
             justify-content: center;
-
-            border-radius: 18px;
-
-            background: linear-gradient(
-                145deg,
-                #26384f,
-                #172131
-            );
-
-            border: 1px solid #35485f;
-
-            box-shadow:
-                0 10px 30px rgba(0, 0, 0, .28);
-
-            margin-bottom: 24px;
+            border-radius: 12px;
+            background: #101318;
+            border: 1px solid #252B34;
+            margin-bottom: 20px;
         }}
 
         .icon-container svg {{
-            width: 34px;
-            height: 34px;
-
-            stroke: #9cb7d8;
+            width: 28px;
+            height: 28px;
+            stroke: #6EA8FF;
         }}
-
-        /* =========================================================
-           TITLE
-           ========================================================= */
 
         h1 {{
-            color: #e9ebef;
-
-            font-size: 24px;
+            color: #E8ECF2;
+            font-size: 20px;
             font-weight: 600;
-
-            letter-spacing: -0.5px;
-
-            margin-bottom: 10px;
+            letter-spacing: -0.3px;
+            margin-bottom: 8px;
         }}
-
-        /* =========================================================
-           DESCRIPTION
-           ========================================================= */
 
         .description {{
-            color: #858c97;
-
-            font-size: 13px;
-            line-height: 1.6;
-
-            max-width: 420px;
-
-            margin-bottom: 18px;
+            color: #9AA3B2;
+            font-size: 12px;
+            line-height: 1.5;
+            max-width: 380px;
+            margin-bottom: 16px;
         }}
-
-        /* =========================================================
-           FAILED URL
-           ========================================================= */
 
         .url {{
             width: 100%;
-            max-width: 440px;
-
-            background: #15171b;
-
-            border: 1px solid #292e36;
-            border-radius: 8px;
-
-            padding: 10px 14px;
-
-            color: #686f7a;
-
+            max-width: 380px;
+            background: #101318;
+            border: 1px solid #252B34;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #687282;
             font-size: 11px;
-
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }}
-
-        /* =========================================================
-           BUTTONS
-           ========================================================= */
 
         .buttons {{
             display: flex;
             align-items: center;
             justify-content: center;
-
             gap: 8px;
         }}
 
         button {{
-            height: 36px;
-
-            padding: 0 16px;
-
-            border-radius: 7px;
-
-            border: 1px solid #2b2f36;
-
-            background: #1b1e24;
-
-            color: #c6cad1;
-
+            height: 34px;
+            padding: 0 14px;
+            border-radius: 6px;
+            border: 1px solid #252B34;
+            background: #171C23;
+            color: #9AA3B2;
             font-family: inherit;
             font-size: 12px;
-
             cursor: pointer;
-
-            transition:
-                background .15s ease,
-                border-color .15s ease,
-                color .15s ease;
+            transition: background .15s, border-color .15s, color .15s;
         }}
 
         button:hover {{
-            background: #252930;
-
-            border-color: #383d46;
-
-            color: #ffffff;
-        }}
-
-        button:active {{
-            background: #30353e;
+            background: #1B2028;
+            border-color: #303846;
+            color: #E8ECF2;
         }}
 
         .primary {{
-            background: #315f9d;
-
-            border-color: #315f9d;
-
-            color: #ffffff;
+            background: #6EA8FF;
+            border-color: #6EA8FF;
+            color: #0B0D10;
+            font-weight: 600;
         }}
 
         .primary:hover {{
-            background: #3b6fae;
-
-            border-color: #3b6fae;
+            background: #82B5FF;
+            border-color: #82B5FF;
+            color: #0B0D10;
         }}
 
-        /* =========================================================
-           FOOTER
-           ========================================================= */
-
         .footer {{
-            margin-top: 32px;
-
-            color: #4f555e;
-
+            margin-top: 28px;
+            color: #687282;
             font-size: 10px;
-
-            letter-spacing: .2px;
+            letter-spacing: 1px;
         }}
 
     </style>
@@ -1591,10 +1334,7 @@ def get_offline_page_html(failed_url="") -> str:
 
     <div class="container">
 
-        <!-- OFFLINE ICON -->
-
         <div class="icon-container">
-
             <svg
                 viewBox="0 0 24 24"
                 fill="none"
@@ -1603,83 +1343,43 @@ def get_offline_page_html(failed_url="") -> str:
                 stroke-linecap="round"
                 stroke-linejoin="round"
             >
-
                 <path d="M1 1l22 22"/>
-
                 <path d="M9.9 4.2a10.8 10.8 0 0 1 8.9 3.4"/>
-
                 <path d="M5.3 8.8a7.5 7.5 0 0 1 5.8-1.7"/>
-
                 <path d="M2.7 12.9a4.5 4.5 0 0 1 3.4-1.2"/>
-
                 <path d="M12 19h.01"/>
-
                 <path d="M16.7 13.3a3.8 3.8 0 0 0-2.8-1.1"/>
-
             </svg>
-
         </div>
 
-
-        <!-- TITLE -->
-
-        <h1>
-            No Internet Connection
-        </h1>
-
-
-        <!-- DESCRIPTION -->
+        <h1>No Internet Connection</h1>
 
         <div class="description">
             Rhodium couldn't load this page.
             Check your internet connection and try again.
         </div>
 
-
-        <!-- FAILED URL -->
-
         <div class="url" title="{failed_url_display}">
             {failed_url_display}
         </div>
 
-
-        <!-- ACTION BUTTONS -->
-
         <div class="buttons">
-
-            <button onclick="goHome()">
-                Go Home
-            </button>
-
-            <button class="primary" onclick="retry()">
-                Try Again
-            </button>
-
+            <button onclick="goHome()">Go Home</button>
+            <button class="primary" onclick="retry()">Try Again</button>
         </div>
 
-
-        <!-- FOOTER -->
-
-        <div class="footer">
-            RHODIUM
-        </div>
+        <div class="footer">RHODIUM</div>
 
     </div>
 
-
     <script>
-
         function retry() {{
-            window.location.href =
-                'rhodium://retry';
+            window.location.href = 'rhodium://retry';
         }}
-
 
         function goHome() {{
-            window.location.href =
-                'rhodium://home';
+            window.location.href = 'rhodium://home';
         }}
-
     </script>
 
 </body>

@@ -32,17 +32,60 @@ from rhodium.suggestions import SuggestionController
 from rhodium.suggestion_popup import SuggestionLineEdit, SuggestionPopup
 
 
+class RhodiumTabBar(QTabBar):
+    tabCloseRequested = pyqtSignal(int)
+    doubleClickedEmpty = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.pinned_count = 0
+        self.setElideMode(Qt.TextElideMode.ElideRight)
+
+    def tabSizeHint(self, index):
+        if index < self.pinned_count:
+            return QSize(36, 32)
+        count = self.count()
+        normal_count = count - self.pinned_count
+        if normal_count <= 0:
+            return super().tabSizeHint(index)
+        # Get available width for normal tabs
+        available_width = self.width() - (self.pinned_count * 36) - 40
+        if available_width <= 0:
+            available_width = self.parentWidget().width() - (self.pinned_count * 36) - 40
+        if available_width > 0:
+            w = available_width // normal_count
+            w = max(90, min(220, w))
+            return QSize(w, 32)
+        return QSize(160, 32)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.MiddleButton:
+            idx = self.tabAt(event.pos())
+            if idx >= 0:
+                self.tabCloseRequested.emit(idx)
+                return
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.tabAt(event.pos()) < 0:
+                self.doubleClickedEmpty.emit()
+                return
+        super().mouseDoubleClickEvent(event)
+
+
 class RhodiumTabWidget(QWidget):
-    """Chrome-style tab area: a tab strip with an inline '+' button above a page stack."""
+    """Chrome-style tab area: a tab strip with responsive sizing, pinned tabs, close/mute actions, context menus, and overflows."""
 
     tabCloseRequested = pyqtSignal(int)
     currentChanged = pyqtSignal(int)
 
-    def __init__(self, parent=None):
+    def __init__(self, browser, parent=None):
         super().__init__(parent)
+        self.browser = browser
         self.setObjectName("BrowserTabs")
 
-        self.tab_bar = QTabBar()
+        self.tab_bar = RhodiumTabBar(self)
         self.tab_bar.setObjectName("RhodiumTabBar")
         self.tab_bar.setTabsClosable(True)
         self.tab_bar.setMovable(True)
@@ -51,11 +94,18 @@ class RhodiumTabWidget(QWidget):
         self.tab_bar.setElideMode(Qt.TextElideMode.ElideRight)
         self.tab_bar.setIconSize(QSize(16, 16))
         self.tab_bar.setDrawBase(False)
+        self.tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         self.new_tab_button = QToolButton()
         self.new_tab_button.setObjectName("NewTabButton")
         self.new_tab_button.setAutoRaise(True)
         self.new_tab_button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.tab_list_button = QToolButton()
+        self.tab_list_button.setObjectName("NewTabButton")
+        self.tab_list_button.setAutoRaise(True)
+        self.tab_list_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.tab_list_button.setToolTip("Show All Tabs")
 
         strip = QWidget()
         strip.setObjectName("TabStrip")
@@ -64,6 +114,7 @@ class RhodiumTabWidget(QWidget):
         strip_layout.setSpacing(4)
         strip_layout.addWidget(self.tab_bar)
         strip_layout.addWidget(self.new_tab_button)
+        strip_layout.addWidget(self.tab_list_button)
         strip_layout.addStretch()
 
         self.stack = QStackedWidget()
@@ -77,12 +128,23 @@ class RhodiumTabWidget(QWidget):
         self.tab_bar.currentChanged.connect(self._on_current_changed)
         self.tab_bar.tabCloseRequested.connect(self.tabCloseRequested)
         self.tab_bar.tabMoved.connect(self._on_tab_moved)
+        self.tab_bar.doubleClickedEmpty.connect(lambda: self.browser.add_new_tab())
+        self.tab_bar.customContextMenuRequested.connect(self._show_tab_context_menu)
+        self.tab_list_button.clicked.connect(self._show_all_tabs_popup)
 
     def _on_current_changed(self, index):
         self.stack.setCurrentIndex(index)
         self.currentChanged.emit(index)
 
     def _on_tab_moved(self, from_index, to_index):
+        is_from_pinned = from_index < self.tab_bar.pinned_count
+        is_to_pinned = to_index < self.tab_bar.pinned_count
+        if is_from_pinned != is_to_pinned:
+            self.tab_bar.blockSignals(True)
+            self.tab_bar.moveTab(to_index, from_index)
+            self.tab_bar.blockSignals(False)
+            return
+
         widget = self.stack.widget(from_index)
         self.stack.removeWidget(widget)
         self.stack.insertWidget(to_index, widget)
@@ -94,14 +156,18 @@ class RhodiumTabWidget(QWidget):
     def addTab(self, widget, label=""):
         index = self.stack.addWidget(widget)
         self.tab_bar.addTab(label)
+        self.tab_bar.updateGeometry()
         return index
 
     def removeTab(self, index):
         widget = self.stack.widget(index)
         if widget is None:
             return
+        if index < self.tab_bar.pinned_count:
+            self.tab_bar.pinned_count = max(0, self.tab_bar.pinned_count - 1)
         self.stack.removeWidget(widget)
         self.tab_bar.removeTab(index)
+        self.tab_bar.updateGeometry()
 
     def widget(self, index):
         return self.stack.widget(index)
@@ -122,13 +188,140 @@ class RhodiumTabWidget(QWidget):
         self.tab_bar.setCurrentIndex(index)
 
     def setTabText(self, index, text):
-        self.tab_bar.setTabText(index, text)
+        if index < self.tab_bar.pinned_count:
+            self.tab_bar.setTabText(index, "")
+        else:
+            self.tab_bar.setTabText(index, text)
 
     def setTabToolTip(self, index, text):
         self.tab_bar.setTabToolTip(index, text)
 
     def setTabIcon(self, index, tab_icon):
         self.tab_bar.setTabIcon(index, tab_icon)
+
+    def pin_tab(self, index):
+        if index < 0 or index >= self.count() or index < self.tab_bar.pinned_count:
+            return
+        target_index = self.tab_bar.pinned_count
+        if index != target_index:
+            self.tab_bar.blockSignals(True)
+            self.tab_bar.moveTab(index, target_index)
+            self.tab_bar.blockSignals(False)
+            widget = self.stack.widget(index)
+            self.stack.removeWidget(widget)
+            self.stack.insertWidget(target_index, widget)
+            index = target_index
+
+        widget = self.widget(index)
+        widget.setProperty("pinned", True)
+        self.tab_bar.pinned_count += 1
+        self.tab_bar.setTabText(index, "")
+        self.tab_bar.setTabButton(index, QTabBar.ButtonPosition.RightSide, None)
+        self.tab_bar.setCurrentIndex(index)
+        self.tab_bar.updateGeometry()
+
+    def unpin_tab(self, index):
+        if index < 0 or index >= self.count() or index >= self.tab_bar.pinned_count:
+            return
+        widget = self.widget(index)
+        widget.setProperty("pinned", False)
+        self.tab_bar.pinned_count = max(0, self.tab_bar.pinned_count - 1)
+        target_index = self.tab_bar.pinned_count
+        if index != target_index:
+            self.tab_bar.blockSignals(True)
+            self.tab_bar.moveTab(index, target_index)
+            self.tab_bar.blockSignals(False)
+            widget = self.stack.widget(index)
+            self.stack.removeWidget(widget)
+            self.stack.insertWidget(target_index, widget)
+            index = target_index
+
+        title = widget.title() or "New Tab"
+        short = title[:28] + "…" if len(title) > 28 else title
+        self.tab_bar.setTabText(index, short)
+        self.tab_bar.setCurrentIndex(index)
+        self.tab_bar.updateGeometry()
+
+    def move_tab(self, index, target_index):
+        if index < 0 or index >= self.count() or target_index < 0 or target_index >= self.count():
+            return
+        is_from_pinned = index < self.tab_bar.pinned_count
+        is_to_pinned = target_index < self.tab_bar.pinned_count
+        if is_from_pinned != is_to_pinned:
+            return
+        self.tab_bar.moveTab(index, target_index)
+        widget = self.stack.widget(index)
+        self.stack.removeWidget(widget)
+        self.stack.insertWidget(target_index, widget)
+        self.setCurrentIndex(target_index)
+
+    def close_other_tabs(self, index):
+        for i in range(self.count() - 1, -1, -1):
+            if i != index:
+                self.browser.close_tab(i)
+
+    def close_tabs_to_right(self, index):
+        for i in range(self.count() - 1, index, -1):
+            self.browser.close_tab(i)
+
+    def _show_all_tabs_popup(self):
+        menu = QMenu(self)
+        for i in range(self.count()):
+            title = self.widget(i).title() or "New Tab"
+            act = menu.addAction(self.tab_bar.tabIcon(i), title)
+            act.triggered.connect(lambda checked, idx=i: self.setCurrentIndex(idx))
+        menu.exec(self.tab_list_button.mapToGlobal(QPoint(0, self.tab_list_button.height())))
+
+    def _show_tab_context_menu(self, pos):
+        index = self.tab_bar.tabAt(pos)
+        if index < 0:
+            menu = QMenu(self)
+            menu.addAction("Open New Tab", lambda: self.browser.add_new_tab())
+            if self.browser.closed_tabs_stack:
+                menu.addAction("Reopen Closed Tab", lambda: self.browser.reopen_closed_tab())
+            menu.exec(self.tab_bar.mapToGlobal(pos))
+            return
+
+        menu = QMenu(self)
+        menu.addAction("Open New Tab", lambda: self.browser.add_new_tab())
+        menu.addSeparator()
+
+        view = self.widget(index)
+        menu.addAction("Reload Tab", lambda: view.reload())
+
+        url = view.url().toString()
+        menu.addAction("Duplicate Tab", lambda: self.browser.add_new_tab(url))
+        menu.addSeparator()
+
+        # Mute / Unmute
+        is_muted = view.page().isAudioMuted()
+        mute_text = "Unmute Tab" if is_muted else "Mute Tab"
+        menu.addAction(mute_text, lambda: view.page().setAudioMuted(not is_muted))
+
+        # Pin / Unpin
+        is_pinned = view.property("pinned") or False
+        pin_text = "Unpin Tab" if is_pinned else "Pin Tab"
+        if is_pinned:
+            menu.addAction(pin_text, lambda: self.unpin_tab(index))
+        else:
+            menu.addAction(pin_text, lambda: self.pin_tab(index))
+        menu.addSeparator()
+
+        if index > 0 and (not is_pinned or index < self.tab_bar.pinned_count - 1):
+            menu.addAction("Move Tab Left", lambda: self.move_tab(index, index - 1))
+        if index < self.count() - 1 and (is_pinned or index >= self.tab_bar.pinned_count):
+            menu.addAction("Move Tab Right", lambda: self.move_tab(index, index + 1))
+        menu.addSeparator()
+
+        menu.addAction("Close Tab", lambda: self.browser.close_tab(index))
+        menu.addAction("Close Other Tabs", lambda: self.close_other_tabs(index))
+        menu.addAction("Close Tabs to the Right", lambda: self.close_tabs_to_right(index))
+
+        if self.browser.closed_tabs_stack:
+            menu.addSeparator()
+            menu.addAction("Reopen Closed Tab", lambda: self.browser.reopen_closed_tab())
+
+        menu.exec(self.tab_bar.mapToGlobal(pos))
 
 
 class AdvancedBrowser(QMainWindow):
@@ -154,6 +347,7 @@ class AdvancedBrowser(QMainWindow):
         self.shortcuts = self.load_shortcuts()
 
         self.download_manager = DownloadManager(self)
+        self.closed_tabs_stack = []
 
         # Local suggestion data (SQLite history + recent searches + bookmarks)
         self.database = get_database()
@@ -210,13 +404,17 @@ class AdvancedBrowser(QMainWindow):
         vbox.addWidget(self.toolbar)
 
         # TAB SYSTEM
-        self.tab_widget = RhodiumTabWidget()
+        self.tab_widget = RhodiumTabWidget(self)
 
         self.tab_widget.new_tab_button.setIcon(icon("plus.png"))
         self.tab_widget.new_tab_button.setIconSize(QSize(16, 16))
         self.tab_widget.new_tab_button.setFixedSize(28, 28)
         self.tab_widget.new_tab_button.setToolTip("New Tab  (Ctrl+T)")
         self.tab_widget.new_tab_button.clicked.connect(lambda: self.add_new_tab())
+
+        self.tab_widget.tab_list_button.setIcon(icon("menu.png"))
+        self.tab_widget.tab_list_button.setIconSize(QSize(14, 14))
+        self.tab_widget.tab_list_button.setFixedSize(28, 28)
 
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.tab_widget.currentChanged.connect(self.tab_changed)
@@ -264,6 +462,14 @@ class AdvancedBrowser(QMainWindow):
         self._add_shortcut("Alt+Left",     self.go_back)
         self._add_shortcut("Alt+Right",    self.go_forward)
 
+        # Tab navigation & reopen shortcuts
+        self._add_shortcut("Ctrl+Shift+T", self.reopen_closed_tab)
+        self._add_shortcut("Ctrl+Tab", self.next_tab)
+        self._add_shortcut("Ctrl+Shift+Tab", self.prev_tab)
+        for i in range(1, 9):
+            self._add_shortcut(f"Ctrl+{i}", lambda checked, idx=i-1: self.activate_tab_index(idx))
+        self._add_shortcut("Ctrl+9", self.activate_last_tab)
+
         self._add_shortcut(
             "Ctrl+G",
             lambda: self.perform_find(
@@ -287,18 +493,23 @@ class AdvancedBrowser(QMainWindow):
         bar = QToolBar("Navigation")
         bar.setObjectName("NavBar")
 
-        bar.setIconSize(QSize(17, 17))
+        bar.setIconSize(QSize(16, 16))
         bar.setMovable(False)
         bar.setFloatable(False)
         bar.setContentsMargins(4, 0, 4, 0)
 
+        # Set custom layout spacing
+        if bar.layout() is not None:
+            bar.layout().setSpacing(3)
+            bar.layout().setContentsMargins(6, 0, 6, 0)
+
         def nav_btn(icon_name, tip, slot):
             b = QPushButton()
             b.setIcon(icon(icon_name))
-            b.setIconSize(QSize(17, 17))
+            b.setIconSize(QSize(16, 16))
             b.setToolTip(tip)
             b.setObjectName("NavBtn")
-            b.setFixedSize(34, 34)
+            b.setFixedSize(32, 32)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(slot)
             return b
@@ -318,14 +529,12 @@ class AdvancedBrowser(QMainWindow):
         ):
             bar.addWidget(button)
 
-        bar.addSeparator()
-
         # URL BAR
         self.url_bar = SuggestionLineEdit()
         self.url_bar.setObjectName("UrlBar")
         self.url_bar.set_controller(self.suggestion_controller)
         self.url_bar.suggestion_activated.connect(self._on_address_suggestion_activated)
-        self.url_bar.setPlaceholderText("Search or enter address")
+        self.url_bar.setPlaceholderText("Search the web or enter an address")
         self.url_bar.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed
@@ -334,24 +543,22 @@ class AdvancedBrowser(QMainWindow):
         self.url_bar.returnPressed.connect(self.navigate_to_url)
 
         self.security_label = QLabel()
-        self.security_label.setStyleSheet("padding-left: 8px; font-size: 14px; background: transparent; margin-right: 4px;")
+        self.security_label.setStyleSheet("padding-left: 8px; background: transparent; margin-right: 4px;")
         self.security_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         url_layout = QHBoxLayout(self.url_bar)
         url_layout.setContentsMargins(0, 0, 0, 0)
         url_layout.addWidget(self.security_label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.url_bar.setTextMargins(30, 0, 0, 0)
+        self.url_bar.setTextMargins(32, 0, 8, 0)
 
         bar.addWidget(self.url_bar)
-
-        bar.addSeparator()
 
         # BOOKMARK
         self.btn_bookmark = QPushButton()
         self.btn_bookmark.setObjectName("NavBtn")
         self.btn_bookmark.setIcon(icon("bookmark-empty.png"))
-        self.btn_bookmark.setIconSize(QSize(17, 17))
-        self.btn_bookmark.setFixedSize(34, 34)
+        self.btn_bookmark.setIconSize(QSize(16, 16))
+        self.btn_bookmark.setFixedSize(32, 32)
         self.btn_bookmark.setToolTip("Add Bookmark  (Ctrl+D)")
         self.btn_bookmark.clicked.connect(self.add_bookmark)
         bar.addWidget(self.btn_bookmark)
@@ -360,8 +567,8 @@ class AdvancedBrowser(QMainWindow):
         self.btn_history = QPushButton()
         self.btn_history.setObjectName("NavBtn")
         self.btn_history.setIcon(icon("history.png"))
-        self.btn_history.setIconSize(QSize(17, 17))
-        self.btn_history.setFixedSize(34, 34)
+        self.btn_history.setIconSize(QSize(16, 16))
+        self.btn_history.setFixedSize(32, 32)
         self.btn_history.setToolTip("History")
         self.btn_history.setMenu(self.create_history_menu())
         bar.addWidget(self.btn_history)
@@ -371,24 +578,26 @@ class AdvancedBrowser(QMainWindow):
             self.download_manager,
             show_all_callback=lambda: self.load_url("rhodium://downloads")
         )
+        # Ensure it matches NavBtn dimensions
+        self.btn_download.setFixedSize(32, 32)
         bar.addWidget(self.btn_download)
 
         # MENU
         self.btn_menu = QPushButton()
         self.btn_menu.setObjectName("NavBtn")
         self.btn_menu.setIcon(icon("menu.png"))
-        self.btn_menu.setIconSize(QSize(17, 17))
-        self.btn_menu.setFixedSize(34, 34)
+        self.btn_menu.setIconSize(QSize(16, 16))
+        self.btn_menu.setFixedSize(32, 32)
         self.btn_menu.setToolTip("Menu")
         self.btn_menu.setMenu(self.create_main_menu())
         bar.addWidget(self.btn_menu)
 
-        # APPLICATION BUTTONS
+        # Window controls container/layout for perfect resizing/margins
         self.btn_minimize = QPushButton()
         self.btn_minimize.setObjectName("WinMinBtn")
         self.btn_minimize.setIcon(icon("win-minimize.png"))
-        self.btn_minimize.setIconSize(QSize(14, 14))
-        self.btn_minimize.setFixedSize(34, 34)
+        self.btn_minimize.setIconSize(QSize(11, 11))
+        self.btn_minimize.setFixedSize(30, 30)
         self.btn_minimize.setFlat(True)
         self.btn_minimize.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_minimize.setToolTip("Minimize")
@@ -401,8 +610,8 @@ class AdvancedBrowser(QMainWindow):
             self.btn_maximize.setIcon(icon("win-restore.png"))
         else:
             self.btn_maximize.setIcon(icon("win-maximize.png"))
-        self.btn_maximize.setIconSize(QSize(14, 14))
-        self.btn_maximize.setFixedSize(34, 34)
+        self.btn_maximize.setIconSize(QSize(11, 11))
+        self.btn_maximize.setFixedSize(30, 30)
         self.btn_maximize.setFlat(True)
         self.btn_maximize.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_maximize.setToolTip("Maximize / Restore")
@@ -412,8 +621,8 @@ class AdvancedBrowser(QMainWindow):
         self.btn_close_win = QPushButton()
         self.btn_close_win.setObjectName("WinCloseBtn")
         self.btn_close_win.setIcon(icon("win-close.png"))
-        self.btn_close_win.setIconSize(QSize(14, 14))
-        self.btn_close_win.setFixedSize(34, 34)
+        self.btn_close_win.setIconSize(QSize(11, 11))
+        self.btn_close_win.setFixedSize(30, 30)
         self.btn_close_win.setFlat(True)
         self.btn_close_win.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_close_win.setToolTip("Close")
@@ -540,6 +749,7 @@ class AdvancedBrowser(QMainWindow):
 
         if url in ("about:home", "rhodium://home", "about:blank", ""):
             view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+            QTimer.singleShot(50, lambda: self.url_bar.setFocus() or self.url_bar.selectAll())
         elif url.split("?")[0] == "rhodium://downloads":
             self.show_downloads_in_view(view)
         else:
@@ -548,12 +758,52 @@ class AdvancedBrowser(QMainWindow):
         return view
 
     def close_tab(self, index):
+        if index < 0 or index >= self.tab_widget.count():
+            return
+        view = self.tab_widget.widget(index)
+        if not view:
+            return
+
+        # Save to closed tabs stack
+        url = view.url().toString()
+        title = view.title() or url
+        if url not in ("about:blank", "about:home", "rhodium://home", ""):
+            self.closed_tabs_stack.append({"url": url, "title": title})
+
         if self.tab_widget.count() > 1:
-            w = self.tab_widget.widget(index)
-            w.deleteLater()
+            # If closing the active tab, select adjacent tab explicitly
+            if index == self.tab_widget.currentIndex():
+                new_index = index - 1 if index > 0 else 1
+                self.tab_widget.setCurrentIndex(new_index)
+
+            view.deleteLater()
             self.tab_widget.removeTab(index)
         else:
             self.close()
+
+    def reopen_closed_tab(self):
+        if self.closed_tabs_stack:
+            item = self.closed_tabs_stack.pop()
+            self.add_new_tab(item["url"])
+
+    def next_tab(self):
+        count = self.tab_widget.count()
+        if count > 1:
+            self.tab_widget.setCurrentIndex((self.tab_widget.currentIndex() + 1) % count)
+
+    def prev_tab(self):
+        count = self.tab_widget.count()
+        if count > 1:
+            self.tab_widget.setCurrentIndex((self.tab_widget.currentIndex() - 1) % count)
+
+    def activate_tab_index(self, index):
+        if 0 <= index < self.tab_widget.count():
+            self.tab_widget.setCurrentIndex(index)
+
+    def activate_last_tab(self):
+        count = self.tab_widget.count()
+        if count > 0:
+            self.tab_widget.setCurrentIndex(count - 1)
 
     def tab_changed(self, index):
         if index < 0:
@@ -563,6 +813,7 @@ class AdvancedBrowser(QMainWindow):
             url = view.url().toString()
             self.url_bar.setText("rhodium://home" if url in ("about:blank", "") else url)
             self._update_bookmark_icon(url)
+            self.update_security_indicator(view.url())
 
     def _load_in_view(self, url_string: str, view: QWebEngineView):
         if not url_string.startswith(("http://", "https://", "file://", "about:")):
