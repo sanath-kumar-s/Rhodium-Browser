@@ -382,7 +382,7 @@ class AdvancedBrowser(QMainWindow):
 
     def init_ui(self):
         # Frameless window
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self._drag_pos = QPoint()
 
         # Central container
@@ -732,11 +732,12 @@ class AdvancedBrowser(QMainWindow):
     def update_main_menu(self):
         self.btn_menu.setMenu(self.create_main_menu())
 
-    def add_new_tab(self, url=None):
+    def add_new_tab(self, url=None, activate=True):
         if url is None:
             url = self.settings.get("home_page", "about:home")
 
         view = SmoothWebEngineView()
+        view.rhodium_browser = self
         page = RhodiumWebEnginePage(self, view, view)
         view.setPage(page)
 
@@ -749,8 +750,17 @@ class AdvancedBrowser(QMainWindow):
         view.urlChanged.connect(lambda u: self.on_url_changed(u, view))
         view.iconChanged.connect(lambda: self.update_tab_icon(view))
 
+        # Right-click link / page context menu.
+        view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        view.customContextMenuRequested.connect(
+            lambda pos: self._on_view_context_menu(pos, view)
+        )
+        # target="_blank" / window.open() / new-window navigation requests.
+        page.newWindowRequested.connect(self.handle_new_window_request)
+
         idx = self.tab_widget.addTab(view, "New Tab")
-        self.tab_widget.setCurrentIndex(idx)
+        if activate:
+            self.tab_widget.setCurrentIndex(idx)
         self.tab_widget.setTabToolTip(idx, "New Tab")
 
         if url in ("about:home", "rhodium://home", "about:blank", ""):
@@ -824,6 +834,12 @@ class AdvancedBrowser(QMainWindow):
             self.update_security_indicator(view.url())
 
     def _load_in_view(self, url_string: str, view: QWebEngineView):
+        if url_string.startswith("rhodium://"):
+            # Internal Rhodium URLs are intercepted by RhodiumWebEnginePage's
+            # acceptNavigationRequest and handled in-process (never handed to
+            # the OS).  Let the page route them.
+            view.load(QUrl(url_string))
+            return
         if not url_string.startswith(("http://", "https://", "file://", "about:")):
             if "." in url_string and " " not in url_string:
                 url_string = "https://" + url_string
@@ -832,6 +848,128 @@ class AdvancedBrowser(QMainWindow):
                 self.database.record_search(url_string.strip())
                 url_string = "https://www.google.com/search?q=" + urllib.parse.quote_plus(url_string)
         view.load(QUrl(url_string))
+
+    def open_link_new_tab(self, url: str, activate: bool = True):
+        """Open ``url`` in a new tab using the existing tab-creation system.
+
+        The new tab automatically receives favicon/title/loading/history
+        handling because it goes through ``add_new_tab``.
+        """
+        if not url:
+            return None
+        return self.add_new_tab(url, activate=activate)
+
+    def handle_new_window_request(self, request):
+        """Handle target="_blank" / window.open() / new-window requests.
+
+        Always opens the request inside Rhodium (a new tab, or a new window for
+        window-type requests) instead of letting the OS take over.
+        """
+        from PyQt6.QtWebEngineCore import QWebEngineNewWindowRequest
+        dt = request.destination
+        if dt in (QWebEngineNewWindowRequest.DestinationType.InNewWindow,
+                  QWebEngineNewWindowRequest.DestinationType.InNewDialog):
+            win = self.open_new_window()
+            target = win.get_current_view() if win is not None else None
+            if target is not None:
+                request.openIn(target.page())
+            return
+        # InNewTab (foreground) vs InNewBackgroundTab.
+        activate = (dt == QWebEngineNewWindowRequest.DestinationType.InNewTab)
+        view = self.add_new_tab(activate=activate)
+        request.openIn(view.page())
+
+    # ── Link / page context menu ─────────────────────────────────────────────
+    def _on_view_context_menu(self, pos: QPoint, view):
+        """Build a browser-style context menu at ``pos`` for ``view``.
+
+        Re-uses the page's own hit-test context so the built-in link / image /
+        selection actions stay enabled exactly as they would in the native
+        menu, while adding the conventional link-opening entries.
+        """
+        from PyQt6.QtWebEngineCore import QWebEnginePage as WEP
+        page = view.page()
+        menu = QMenu(self)
+
+        # Link actions (enabled only when the context actually is a link).
+        link_items = [
+            (WEP.WebAction.OpenLinkInThisWindow, "Open Link"),
+            (WEP.WebAction.OpenLinkInNewTab, "Open Link in New Tab"),
+            (WEP.WebAction.OpenLinkInNewWindow, "Open Link in New Window"),
+            (WEP.WebAction.CopyLinkToClipboard, "Copy Link Address"),
+            (WEP.WebAction.DownloadLinkToDisk, "Save Link As…"),
+        ]
+        added_link = False
+        for enum, label in link_items:
+            action = page.action(enum)
+            if action.isEnabled():
+                action.setText(label)
+                menu.addAction(action)
+                added_link = True
+
+        if added_link:
+            menu.addSeparator()
+
+        # Standard page actions (kept from the existing native menu behaviour).
+        std_items = [
+            WEP.WebAction.Back, WEP.WebAction.Forward, WEP.WebAction.Reload,
+            WEP.WebAction.Stop, WEP.WebAction.SavePage, WEP.WebAction.ViewSource,
+        ]
+        for enum in std_items:
+            action = page.action(enum)
+            if action.isEnabled():
+                menu.addAction(action)
+
+        menu.addSeparator()
+
+        edit_items = [
+            WEP.WebAction.Undo, WEP.WebAction.Redo, WEP.WebAction.Cut,
+            WEP.WebAction.Copy, WEP.WebAction.Paste, WEP.WebAction.SelectAll,
+        ]
+        for enum in edit_items:
+            action = page.action(enum)
+            if action.isEnabled():
+                menu.addAction(action)
+
+        # Image actions (enabled only on image context).
+        img_items = [
+            WEP.WebAction.CopyImageUrlToClipboard,
+            WEP.WebAction.CopyImageToClipboard,
+            WEP.WebAction.DownloadImageToDisk,
+        ]
+        img_added = False
+        for enum in img_items:
+            action = page.action(enum)
+            if action.isEnabled():
+                if not img_added:
+                    menu.addSeparator()
+                    img_added = True
+                menu.addAction(action)
+
+        if menu.isEmpty():
+            menu.addAction("(No actions available)")
+
+        global_pos = view.mapToGlobal(pos)
+        self._exec_context_menu(menu, global_pos)
+
+    def _exec_context_menu(self, menu, global_pos: QPoint):
+        """Show ``menu`` at ``global_pos``, kept inside the screen bounds."""
+        screen = QApplication.screenAt(global_pos)
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        if screen is not None:
+            geo = screen.availableGeometry()
+            size = menu.sizeHint()
+            x = global_pos.x()
+            y = global_pos.y()
+            if x + size.width() > geo.right():
+                x = geo.right() - size.width()
+            if y + size.height() > geo.bottom():
+                y = geo.bottom() - size.height()
+            x = max(geo.left(), x)
+            y = max(geo.top(), y)
+            global_pos = QPoint(x, y)
+        menu.exec(global_pos)
 
     def navigate_to_url(self):
         url = self.url_bar.text().strip()
@@ -1058,11 +1196,12 @@ class AdvancedBrowser(QMainWindow):
         from rhodium.browser_window import AdvancedBrowser
         from rhodium.window_filter import ResizeMoveFilter
         from PyQt6.QtWidgets import QApplication
-        
+
         window = AdvancedBrowser()
         event_filter = ResizeMoveFilter(window)
         QApplication.instance().installEventFilter(event_filter)
         window.show()
+        return window
 
     def open_local_file(self):
         path, _ = QFileDialog.getOpenFileName(
