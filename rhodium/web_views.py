@@ -3,6 +3,7 @@ from PyQt6.QtCore import Qt, QUrl, QPoint, QTimer, QEvent, QElapsedTimer, pyqtPr
 from PyQt6.QtGui import QCursor, QPixmap
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage
+from rhodium.profile_manager import get_web_profile
 
 from rhodium.utils import ICONS_DIR
 
@@ -13,8 +14,10 @@ AUTOSCROLL_SPEED = 0.15         # scroll px per frame, per px of offset from anc
 AUTOSCROLL_TICK_MS = 16         # ~60 fps scroll updates
 
 class RhodiumWebEnginePage(QWebEnginePage):
-    def __init__(self, browser_window, view=None, parent=None):
-        super().__init__(parent)
+    def __init__(self, browser_window, view=None, parent=None, profile=None):
+        if profile is None:
+            profile = get_web_profile()
+        super().__init__(profile, parent)
         self.browser_window = browser_window
         self._view = view if view is not None else parent
 
