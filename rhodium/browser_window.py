@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
 from rhodium.profile_manager import get_web_profile
-from rhodium.cookie_manager import get_cookie_manager
 from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 
@@ -1410,11 +1409,6 @@ class AdvancedBrowser(QMainWindow):
         s.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled,
                         self.settings.get("local_storage_enabled", True))
         s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True)
-
-        # Cookie store is owned by the persistent profile; wire a clean manager
-        # around it (no second copy of cookies is kept anywhere).
-        self.cookie_manager = get_cookie_manager()
-
         self.setStyleSheet(self.get_stylesheet())
         for i in range(self.tab_widget.count()):
             v = self.tab_widget.widget(i)
