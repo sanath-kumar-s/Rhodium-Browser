@@ -1,0 +1,337 @@
+"""Cookie manager for Rhodium browser.
+
+Manages cookies using QtWebEngine's persistent QWebEngineCookieStore.
+All browser tabs share the same cookie store via the persistent QWebEngineProfile.
+
+Key Points:
+- Does NOT create or store cookies; Chromium handles that
+- All WebView tabs must use the same QWebEngineProfile for shared cookies
+- Cookie operations are async (QtWebEngine has no sync cookie API)
+- Signal availability depends on Qt version (graceful fallback)
+"""
+
+import logging
+from pathlib import Path
+
+from PyQt6.QtCore import QObject, pyqtSignal, QUrl
+from PyQt6.QtWebEngineCore import QWebEngineProfile
+from rhodium.profile_manager import get_web_profile
+
+logger = logging.getLogger("Rhodium.CookieManager")
+
+
+class CookieManager(QObject):
+    """
+    Manages cookies using QtWebEngine's persistent QWebEngineCookieStore.
+
+    Key Points:
+    - Does NOT create or store cookies; Chromium handles that
+    - All WebView tabs must use the same QWebEngineProfile for shared cookies
+    - Cookie operations are async (QtWebEngine has no sync cookie API)
+    - Signal availability depends on Qt version (graceful fallback)
+    """
+
+    # Signals - emitted when cookie operations complete
+    cookie_added = pyqtSignal(object)          # Emitted when cookie added
+    cookie_removed = pyqtSignal(object)        # Emitted when cookie removed
+    cookies_cleared = pyqtSignal()             # Emitted when all cookies deleted
+    cookies_updated = pyqtSignal()             # Emitted on any cookie change
+
+    def __init__(self, profile: QWebEngineProfile = None):
+        """
+        Initialize CookieManager with a QWebEngineProfile.
+
+        If profile is None, it will be fetched from the persistent profile manager.
+
+        Args:
+            profile: The QWebEngineProfile from Rhodium (defaults to the persistent profile)
+
+        Raises:
+            ValueError: If profile is None or cookieStore() returns None
+        """
+        super().__init__()
+
+        if profile is None:
+            profile = get_web_profile()
+
+        if profile is None:
+            raise ValueError("CookieManager requires non-None QWebEngineProfile")
+
+        self.profile = profile
+        self.cookie_store = profile.cookieStore()
+
+        if self.cookie_store is None:
+            raise ValueError("QWebEngineProfile.cookieStore() returned None")
+
+        logger.info(f"CookieManager initialized")
+        logger.info(f"Storage path: {profile.persistentStoragePath()}")
+
+        self._connect_cookie_signals()
+
+    # ------------------------------------------------------------------
+    # Signal connection with graceful fallback
+    # ------------------------------------------------------------------
+
+    def _connect_cookie_signals(self):
+        """Connect to QWebEngineCookieStore signals with graceful fallback."""
+
+        try:
+            if hasattr(self.cookie_store, 'cookieAdded'):
+                self.cookie_store.cookieAdded.connect(self._on_cookie_added)
+                logger.info("Connected to cookieAdded signal")
+            else:
+                logger.debug("cookieAdded signal not available")
+        except Exception as e:
+            logger.debug(f"Could not connect cookieAdded: {e}")
+
+        try:
+            if hasattr(self.cookie_store, 'cookieRemoved'):
+                self.cookie_store.cookieRemoved.connect(self._on_cookie_removed)
+                logger.info("Connected to cookieRemoved signal")
+            else:
+                logger.debug("cookieRemoved signal not available")
+        except Exception as e:
+            logger.debug(f"Could not connect cookieRemoved: {e}")
+
+        try:
+            if hasattr(self.cookie_store, 'cookieChanged'):
+                self.cookie_store.cookieChanged.connect(self._on_cookie_changed)
+                logger.info("Connected to cookieChanged signal")
+            else:
+                logger.debug("cookieChanged signal not available")
+        except Exception as e:
+            logger.debug(f"Could not connect cookieChanged: {e}")
+
+    # ------------------------------------------------------------------
+    # Internal signal handlers
+    # ------------------------------------------------------------------
+
+    def _on_cookie_added(self, cookie):
+        """Internal: called when cookie added."""
+        logger.debug(f"Cookie added: {self._cookie_to_string(cookie)}")
+        self.cookie_added.emit(cookie)
+        self.cookies_updated.emit()
+
+    def _on_cookie_removed(self, cookie):
+        """Internal: called when cookie removed."""
+        logger.debug(f"Cookie removed: {self._cookie_to_string(cookie)}")
+        self.cookie_removed.emit(cookie)
+        self.cookies_updated.emit()
+
+    def _on_cookie_changed(self, cookie, removed):
+        """Internal: called when cookie changed."""
+        action = "removed" if removed else "added"
+        logger.debug(f"Cookie {action}: {self._cookie_to_string(cookie)}")
+        if removed:
+            self.cookie_removed.emit(cookie)
+        else:
+            self.cookie_added.emit(cookie)
+        self.cookies_updated.emit()
+
+    @staticmethod
+    def _cookie_to_string(cookie) -> str:
+        """Convert cookie to readable string for logging."""
+        try:
+            name = cookie.name().decode() if isinstance(cookie.name(), bytes) else cookie.name()
+            return f"{name} (domain={cookie.domain()}, path={cookie.path()})"
+        except Exception:
+            return str(cookie)
+
+    # ------------------------------------------------------------------
+    # PUBLIC API: COOKIE OPERATIONS
+    # ------------------------------------------------------------------
+
+    def get_all_cookies_async(self, callback):
+        """
+        Get all cookies asynchronously.
+
+        IMPORTANT: QtWebEngine provides NO synchronous cookie API.
+        Cookies are retrieved via async callback.
+
+        Args:
+            callback: Function(cookies_list) called when ready
+                     cookies_list is list of QNetworkCookie objects
+
+        Example:
+            manager.get_all_cookies_async(
+                lambda cookies: print(f"Total: {len(cookies)}")
+            )
+        """
+        try:
+            self.cookie_store.getCookies(callback)
+            logger.debug("Requested cookie list")
+        except AttributeError as e:
+            logger.warning(f"getCookies not available: {e}")
+            # Fallback: call callback with empty list
+            callback([])
+
+    def delete_cookie(self, cookie_name: str, domain: str = None) -> bool:
+        """
+        Delete a specific cookie by name and optional domain.
+
+        Args:
+            cookie_name: Name of cookie to delete
+            domain: Optional domain to filter (if None, delete from any domain)
+
+        Returns:
+            bool: True if operation initiated
+
+        Example:
+            manager.delete_cookie("sessionid", "example.com")
+        """
+        try:
+            def delete_if_matches(cookies):
+                for cookie in cookies:
+                    cookie_name_str = cookie.name().decode() if isinstance(cookie.name(), bytes) else cookie.name()
+                    if cookie_name_str == cookie_name:
+                        if domain is None or cookie.domain() == domain:
+                            if self.cookie_store.deleteCookie(cookie):
+                                logger.info(f"Deleted: {cookie_name} (domain={cookie.domain()})")
+
+            self.get_all_cookies_async(delete_if_matches)
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting cookie {cookie_name}: {e}")
+            return False
+
+    def delete_cookies_for_domain(self, domain: str) -> int:
+        """
+        Delete all cookies for a specific domain.
+
+        Args:
+            domain: Domain to clear (e.g., "facebook.com")
+
+        Returns:
+            int: Approximate number of cookies deleted
+
+        Example:
+            manager.delete_cookies_for_domain("facebook.com")
+        """
+        deleted_count = [0]
+
+        try:
+            def delete_domain_cookies(cookies):
+                for cookie in cookies:
+                    if domain.lower() in cookie.domain().lower() or \
+                       cookie.domain().lower() in domain.lower():
+                        if self.cookie_store.deleteCookie(cookie):
+                            deleted_count[0] += 1
+                            logger.info(f"Deleted: {cookie.name()} from {cookie.domain()}")
+
+            self.get_all_cookies_async(delete_domain_cookies)
+            return deleted_count[0]
+        except Exception as e:
+            logger.error(f"Error deleting domain cookies: {e}")
+            return 0
+
+    def delete_all_cookies(self) -> bool:
+        """
+        Delete ALL cookies from all domains.
+
+        WARNING: This clears login sessions, saved preferences, etc.
+
+        Returns:
+            bool: True if operation initiated
+
+        Example:
+            manager.delete_all_cookies()
+        """
+        try:
+            if hasattr(self.cookie_store, 'deletePersistentCookies'):
+                self.cookie_store.deletePersistentCookies()
+            if hasattr(self.cookie_store, 'deleteSessionCookies'):
+                self.cookie_store.deleteSessionCookies()
+            logger.info("Deleted all cookies")
+            self.cookies_cleared.emit()
+            return True
+
+            # Fallback: manually delete each cookie (unreachable due to early return)
+            # def delete_all(cookies):
+            #     count = 0
+            #     for cookie in cookies:
+            #         if self.cookie_store.deleteCookie(cookie):
+            #             count += 1
+            #     logger.info(f"Deleted {count} cookies (fallback method)")
+            #     self.cookies_cleared.emit()
+            #
+            # self.get_all_cookies_async(delete_all)
+        except Exception as e:
+            logger.error(f"Error deleting all cookies: {e}")
+            return False
+
+    def get_cookie_count_async(self, callback):
+        """
+        Get total cookie count asynchronously.
+
+        Args:
+            callback: Function(count) called with total cookie count
+
+        Example:
+            manager.get_cookie_count_async(lambda n: print(f"Cookies: {n}"))
+        """
+        def count_cookies(cookies):
+            callback(len(cookies))
+
+        self.get_all_cookies_async(count_cookies)
+
+    def get_storage_path(self) -> str:
+        """Get the file system path where cookies are stored."""
+        return self.profile.persistentStoragePath()
+
+    def is_persistent(self) -> bool:
+        """Check if cookie persistence is enabled."""
+        path = self.profile.persistentStoragePath()
+        return path is not None and len(path) > 0
+
+    # ------------------------------------------------------------------
+    # DEBUGGING & TESTING
+    # ------------------------------------------------------------------
+
+    def print_all_cookies_debug(self):
+        """Print all cookies to log (debugging only)."""
+        def print_cookies(cookies):
+            logger.info(f"=== ALL COOKIES ({len(cookies)} total) ===")
+            for i, cookie in enumerate(cookies, 1):
+                name = cookie.name().decode() if isinstance(cookie.name(), bytes) else cookie.name()
+                value = cookie.value().decode() if isinstance(cookie.value(), bytes) else cookie.value()
+                logger.info(
+                    f"  {i}. {name}={value[:30]}... | "
+                    f"domain={cookie.domain()}, secure={cookie.isSecure()}, "
+                    f"httponly={cookie.isHttpOnly()}, session={cookie.isSessionCookie()}"
+                )
+
+        self.get_all_cookies_async(print_cookies)
+
+    def export_cookies_json_debug(self, filepath: str):
+        """Export cookies to JSON file (debugging only)."""
+        def export_cookies(cookies):
+            import json
+            from datetime import datetime
+            data = {
+                "exported": datetime.now().isoformat(),
+                "total": len(cookies),
+                "cookies": []
+            }
+
+            for cookie in cookies:
+                name = cookie.name().decode() if isinstance(cookie.name(), bytes) else cookie.name()
+                value = cookie.value().decode() if isinstance(cookie.value(), bytes) else cookie.value()
+
+                data["cookies"].append({
+                    "name": name,
+                    "value": value,
+                    "domain": cookie.domain(),
+                    "path": cookie.path(),
+                    "secure": cookie.isSecure(),
+                    "httponly": cookie.isHttpOnly(),
+                    "session": cookie.isSessionCookie(),
+                })
+
+            try:
+                with open(filepath, 'w') as f:
+                    json.dump(data, f, indent=2)
+                logger.info(f"Exported {len(cookies)} cookies to {filepath}")
+            except Exception as e:
+                logger.error(f"Export failed: {e}")
+
+        self.get_all_cookies_async(export_cookies)

@@ -32,6 +32,7 @@ from rhodium.download_ui import DownloadToolbarButton
 from rhodium.database import get_database
 from rhodium.suggestions import SuggestionController
 from rhodium.suggestion_popup import SuggestionLineEdit, SuggestionPopup
+from rhodium.cookie_manager import CookieManager
 
 
 class RhodiumTabBar(QTabBar):
@@ -373,6 +374,7 @@ class AdvancedBrowser(QMainWindow):
         self.setMenuBar(None)          # No old-style menu bar
         self.init_ui()
         self.apply_global_settings()
+        self.cookie_manager = CookieManager()
         self.setStyleSheet(self.get_stylesheet())
 
     def _add_shortcut(self, key: str, slot):
@@ -383,7 +385,7 @@ class AdvancedBrowser(QMainWindow):
 
     def init_ui(self):
         # Frameless window
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
+        self.setWindowFlags(Qt.WindowType.CustomizeWindowHint | Qt.WindowType.Window)
         self._drag_pos = QPoint()
 
         # Central container
@@ -1414,6 +1416,27 @@ class AdvancedBrowser(QMainWindow):
             v = self.tab_widget.widget(i)
             if isinstance(v, QWebEngineView):
                 v.setZoomFactor(self.settings.get("default_zoom", 100) / 100.0)
+
+    def clear_all_cookies(self):
+        """Clear all cookies."""
+        if self.cookie_manager:
+            self.cookie_manager.delete_all_cookies()
+            print("All cookies cleared")
+
+    def clear_domain_cookies(self, domain: str):
+        """Clear cookies for specific domain."""
+        if self.cookie_manager:
+            count = self.cookie_manager.delete_cookies_for_domain(domain)
+            print(f"Cleared {count} cookies for {domain}")
+
+    def delete_cookie(self, name: str, domain: str = None):
+        """Delete specific cookie."""
+        if self.cookie_manager:
+            self.cookie_manager.delete_cookie(name, domain)
+
+    def get_cookie_manager(self):
+        """Get the CookieManager instance."""
+        return self.cookie_manager
 
     def on_load_started(self, view):
         self.hide_home_popup()
