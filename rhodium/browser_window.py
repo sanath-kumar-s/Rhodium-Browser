@@ -23,7 +23,7 @@ from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 
 from rhodium.utils import icon
-from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html, get_downloads_page_html, get_history_page_html
+from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html, get_downloads_page_html, get_history_page_html, get_cookie_debugger_page_html
 from rhodium.settings_dialog import SettingsDialog
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
@@ -371,10 +371,19 @@ class AdvancedBrowser(QMainWindow):
         self._downloads_refresh_timer.timeout.connect(self.refresh_downloads_tabs)
         self.download_manager.history_changed.connect(self._downloads_refresh_timer.start)
 
+        self._cookie_debugger_refresh_timer = QTimer(self)
+        self._cookie_debugger_refresh_timer.setSingleShot(True)
+        self._cookie_debugger_refresh_timer.setInterval(600)
+        self._cookie_debugger_refresh_timer.timeout.connect(self.refresh_cookie_debugger_tabs)
+
         self.setMenuBar(None)          # No old-style menu bar
         self.init_ui()
         self.apply_global_settings()
         self.cookie_manager = CookieManager()
+        try:
+            self.cookie_manager.cookies_updated.connect(self._cookie_debugger_refresh_timer.start)
+        except Exception:
+            pass
         self.setStyleSheet(self.get_stylesheet())
 
     def _add_shortcut(self, key: str, slot):
@@ -694,7 +703,8 @@ class AdvancedBrowser(QMainWindow):
         m.addSection("Tools")
         m.addAction(icon("download.png"),  "Downloads",         self.open_downloads_page).setShortcut(QKeySequence("Ctrl+J"))
         m.addAction(icon("settings.png"),  "Settings",          self.open_settings).setShortcut(QKeySequence("Ctrl+,"))
-        m.addAction(icon("delete.png"),    "Clear Browsing Data", self.clear_browsing_data_prompt)
+        m.addAction("Clear Browsing Data", self.clear_browsing_data_prompt)
+        m.addAction("Cookie Debugger",     self.open_cookie_debugger)
         m.addAction(icon("developer.png"), "Developer Tools",   self.open_dev_tools_info).setShortcut(QKeySequence("F12"))
 
         m.addSeparator()
@@ -773,6 +783,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_downloads_in_view(view)
         elif url.split("?")[0] == "rhodium://history":
             self.show_history_in_view(view)
+        elif url.split("?")[0] == "rhodium://cookie-debugger":
+            self.show_cookie_debugger_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -985,6 +997,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_downloads_in_view(view)
         elif url.split("?")[0] == "rhodium://history":
             self.show_history_in_view(view)
+        elif url.split("?")[0] == "rhodium://cookie-debugger":
+            self.show_cookie_debugger_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -998,6 +1012,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_downloads_in_view(view)
         elif url.split("?")[0] == "rhodium://history":
             self.show_history_in_view(view)
+        elif url.split("?")[0] == "rhodium://cookie-debugger":
+            self.show_cookie_debugger_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1006,6 +1022,10 @@ class AdvancedBrowser(QMainWindow):
 
     def open_history_page(self):
         self.load_url("rhodium://history")
+
+    def open_cookie_debugger(self):
+        """Open the cookie debugger internal page in a new tab."""
+        self.load_url("rhodium://cookie-debugger")
 
     def show_downloads_in_view(self, view):
         """Render the internal rhodium://downloads page in a tab."""
@@ -1107,6 +1127,226 @@ class AdvancedBrowser(QMainWindow):
             self.save_history()
         self.refresh_history_tabs()
         self.status_label.setText(f"Cleared {label}.")
+
+    # ── Cookie Debugger ───────────────────────────────────────────────────────
+    def _get_cookie_debugger_diagnostics(self):
+        """Return dict with live profile diagnostics for the debugger page."""
+        try:
+            from rhodium.profile_manager import get_profile_manager
+            pm = get_profile_manager()
+            profile = pm.profile()
+            storage = profile.persistentStoragePath() or "Unknown"
+            cache = profile.cachePath() or "Unknown"
+            try:
+                is_off = bool(profile.isOffTheRecord())
+            except Exception:
+                is_off = False
+            profile_type = "Off-the-record" if is_off else "Persistent"
+            is_persistent = bool(storage and storage != "Unknown")
+            try:
+                pol = str(profile.persistentCookiesPolicy).split(".")[-1]
+            except Exception:
+                pol = "Not exposed by QtWebEngine"
+            try:
+                ppol = str(profile.persistentPermissionsPolicy).split(".")[-1]  # type: ignore[attr-defined]
+            except Exception:
+                ppol = "Not exposed by QtWebEngine"
+            try:
+                has_store = profile.cookieStore() is not None
+            except Exception:
+                has_store = False
+        except Exception as e:
+            storage = "Unknown"
+            cache = "Unknown"
+            profile_type = "Unknown"
+            is_persistent = False
+            pol = "Unknown"
+            ppol = "Not exposed by QtWebEngine"
+            has_store = False
+        return {
+            "profile_type": profile_type,
+            "storage_path": storage,
+            "cache_path": cache,
+            "is_persistent": is_persistent,
+            "cookie_connected": has_store,
+            "cookies_policy": pol,
+            "permissions_policy": ppol,
+        }
+
+    def _cookie_to_dict(self, c):
+        """Convert a QNetworkCookie to a JSON-serialisable dict."""
+        try:
+            name = c.name()
+            name = name.data().decode() if hasattr(name, "data") else (name.decode() if isinstance(name, bytes) else str(name))
+        except Exception:
+            name = "Unknown"
+        try:
+            value = c.value()
+            value = value.data().decode() if hasattr(value, "data") else (value.decode() if isinstance(value, bytes) else str(value))
+        except Exception:
+            value = ""
+        try:
+            domain = c.domain() or ""
+        except Exception:
+            domain = ""
+        try:
+            path = c.path() or "/"
+        except Exception:
+            path = "/"
+        try:
+            is_session = bool(c.isSessionCookie())
+        except Exception:
+            is_session = True
+        try:
+            secure = bool(c.isSecure())
+        except Exception:
+            secure = False
+        try:
+            httponly = bool(c.isHttpOnly())
+        except Exception:
+            httponly = False
+        # SameSite
+        try:
+            ss = c.sameSitePolicy()
+            # QNetworkCookie.SameSite is an enum
+            ss_map = {0: "Default", 1: "None", 2: "Lax", 3: "Strict"}
+            samesite = ss_map.get(int(ss), str(ss))
+        except Exception:
+            samesite = "Unknown"
+        # Expiration
+        expiration = None
+        try:
+            dt = c.expirationDate()
+            if dt is not None and hasattr(dt, "isNull") and not dt.isNull():
+                # QDateTime -> convert to ISO
+                try:
+                    expiration = dt.toString("yyyy-MM-ddThh:mm:ss")
+                    # Try to produce ISO with timezone - fallback
+                    if hasattr(dt, "toSecsSinceEpoch"):
+                        import datetime as _dt
+                        secs = dt.toSecsSinceEpoch()
+                        expiration = _dt.datetime.fromtimestamp(secs).isoformat()
+                except Exception:
+                    expiration = str(dt)
+            elif dt is not None and not is_session:
+                expiration = str(dt)
+        except Exception:
+            expiration = None
+        return {
+            "name": name,
+            "value": value,
+            "domain": domain,
+            "path": path,
+            "is_session": is_session,
+            "secure": secure,
+            "httponly": httponly,
+            "samesite": samesite,
+            "expiration": expiration,
+        }
+
+    def show_cookie_debugger_in_view(self, view):
+        """Render rhodium://cookie-debugger using the live CookieManager data."""
+        diagnostics = self._get_cookie_debugger_diagnostics()
+
+        def on_cookies(cookies):
+            try:
+                dicts = [self._cookie_to_dict(c) for c in (cookies or [])]
+                cookies_json = json.dumps(dicts, ensure_ascii=False)
+                diag_json = json.dumps(diagnostics, ensure_ascii=False)
+                html = get_cookie_debugger_page_html(cookies_json, diag_json)
+                # view may have been closed while cookies were loading
+                try:
+                    view.setHtml(html, QUrl("rhodium://cookie-debugger"))
+                except RuntimeError:
+                    return
+                idx = self.tab_widget.indexOf(view)
+                if idx >= 0:
+                    self.tab_widget.setTabText(idx, "Cookie Debugger")
+                    self.tab_widget.setTabToolTip(idx, "Cookie Debugger — Rhodium")
+                    self.tab_widget.setTabIcon(idx, icon("info (2).png"))
+            except Exception as e:
+                print(f"show_cookie_debugger_in_view error: {e}")
+
+        # Use existing CookieManager — never create a second profile/database
+        try:
+            if hasattr(self, "cookie_manager") and self.cookie_manager is not None:
+                self.cookie_manager.get_all_cookies_async(on_cookies)
+            else:
+                on_cookies([])
+        except Exception:
+            on_cookies([])
+
+    def refresh_cookie_debugger_tabs(self):
+        """Re-render every open cookie-debugger tab."""
+        for i in range(self.tab_widget.count()):
+            v = self.tab_widget.widget(i)
+            if isinstance(v, QWebEngineView):
+                try:
+                    if v.url().toString().split("?")[0] == "rhodium://cookie-debugger":
+                        self.show_cookie_debugger_in_view(v)
+                except Exception:
+                    pass
+
+    def handle_cookie_debugger_delete(self, name: str, domain: str, path: str = ""):
+        if not name:
+            return
+        try:
+            # Prefer direct delete via manager (handles domain filtering)
+            if hasattr(self, "cookie_manager") and self.cookie_manager is not None:
+                self.cookie_manager.delete_cookie(name, domain or None)
+            # Refresh after a short delay to allow async delete to propagate
+            QTimer.singleShot(400, self.refresh_cookie_debugger_tabs)
+            self.status_label.setText(f"Deleted cookie: {name}")
+        except Exception as e:
+            print(f"handle_cookie_debugger_delete error: {e}")
+
+    def handle_cookie_debugger_delete_domain(self, domain: str):
+        if not domain:
+            return
+        reply = QMessageBox.question(
+            self, "Delete Cookies",
+            f"Delete all cookies for domain '{domain}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            if hasattr(self, "cookie_manager") and self.cookie_manager is not None:
+                self.cookie_manager.delete_cookies_for_domain(domain)
+            QTimer.singleShot(500, self.refresh_cookie_debugger_tabs)
+            self.status_label.setText(f"Cleared cookies for {domain}")
+        except Exception as e:
+            print(f"handle_cookie_debugger_delete_domain error: {e}")
+
+    def handle_cookie_debugger_delete_all(self):
+        reply = QMessageBox.question(
+            self, "Delete All Cookies",
+            "Delete all cookies from Rhodium?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            if hasattr(self, "cookie_manager") and self.cookie_manager is not None:
+                self.cookie_manager.delete_all_cookies()
+            QTimer.singleShot(500, self.refresh_cookie_debugger_tabs)
+            self.status_label.setText("All cookies deleted")
+        except Exception as e:
+            print(f"handle_cookie_debugger_delete_all error: {e}")
+
+    def handle_cookie_debugger_set_test(self, name: str, value: str, domain: str):
+        name = (name or "rhodium_test").strip() or "rhodium_test"
+        value = value if value is not None else "hello"
+        domain = (domain or "").strip()
+        try:
+            if hasattr(self, "cookie_manager") and self.cookie_manager is not None:
+                ok = self.cookie_manager.set_test_cookie(name, value, domain=domain)
+                if ok:
+                    self.status_label.setText(f"Test cookie set: {name}")
+                else:
+                    self.status_label.setText("Failed to set test cookie")
+            QTimer.singleShot(600, self.refresh_cookie_debugger_tabs)
+        except Exception as e:
+            print(f"handle_cookie_debugger_set_test error: {e}")
+            QTimer.singleShot(600, self.refresh_cookie_debugger_tabs)
 
     def get_current_view(self):
         return self.tab_widget.currentWidget()
@@ -1706,6 +1946,9 @@ class AdvancedBrowser(QMainWindow):
             return
         if url_str.split("?")[0] == "rhodium://history":
             self.tab_widget.setTabIcon(idx, icon("history.png"))
+            return
+        if url_str.split("?")[0] == "rhodium://cookie-debugger":
+            self.tab_widget.setTabIcon(idx, icon("info (2).png"))
             return
         if "google.com/search" in url_str:
             self.tab_widget.setTabIcon(idx, icon("search.png"))

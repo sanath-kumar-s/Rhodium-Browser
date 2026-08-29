@@ -66,7 +66,19 @@ class CookieManager(QObject):
         logger.info(f"CookieManager initialized")
         logger.info(f"Storage path: {profile.persistentStoragePath()}")
 
+        # In-memory cache of live cookies (both persistent and session).
+        # QtWebEngine's loadAllCookies only re-emits persistent cookies, so
+        # we keep a live cache via cookieAdded/cookieRemoved signals.
+        self._cookie_cache: dict = {}
+        self._cache_loaded = False
+
         self._connect_cookie_signals()
+        # Populate cache with persistent cookies on startup
+        try:
+            self.cookie_store.loadAllCookies()
+            self._cache_loaded = True
+        except Exception as e:
+            logger.debug(f"Initial loadAllCookies failed: {e}")
 
     # ------------------------------------------------------------------
     # Signal connection with graceful fallback
@@ -106,14 +118,38 @@ class CookieManager(QObject):
     # Internal signal handlers
     # ------------------------------------------------------------------
 
+    def _cookie_key(self, cookie):
+        try:
+            name = cookie.name()
+            name = name.data().decode() if hasattr(name, "data") else (name.decode() if isinstance(name, bytes) else str(name))
+        except Exception:
+            name = ""
+        try:
+            domain = cookie.domain() or ""
+        except Exception:
+            domain = ""
+        try:
+            path = cookie.path() or "/"
+        except Exception:
+            path = "/"
+        return (name, domain, path)
+
     def _on_cookie_added(self, cookie):
         """Internal: called when cookie added."""
+        try:
+            self._cookie_cache[self._cookie_key(cookie)] = cookie
+        except Exception:
+            pass
         logger.debug(f"Cookie added: {self._cookie_to_string(cookie)}")
         self.cookie_added.emit(cookie)
         self.cookies_updated.emit()
 
     def _on_cookie_removed(self, cookie):
         """Internal: called when cookie removed."""
+        try:
+            self._cookie_cache.pop(self._cookie_key(cookie), None)
+        except Exception:
+            pass
         logger.debug(f"Cookie removed: {self._cookie_to_string(cookie)}")
         self.cookie_removed.emit(cookie)
         self.cookies_updated.emit()
@@ -122,10 +158,18 @@ class CookieManager(QObject):
         """Internal: called when cookie changed."""
         action = "removed" if removed else "added"
         logger.debug(f"Cookie {action}: {self._cookie_to_string(cookie)}")
-        if removed:
-            self.cookie_removed.emit(cookie)
-        else:
-            self.cookie_added.emit(cookie)
+        try:
+            if removed:
+                self._cookie_cache.pop(self._cookie_key(cookie), None)
+                self.cookie_removed.emit(cookie)
+            else:
+                self._cookie_cache[self._cookie_key(cookie)] = cookie
+                self.cookie_added.emit(cookie)
+        except Exception:
+            if removed:
+                self.cookie_removed.emit(cookie)
+            else:
+                self.cookie_added.emit(cookie)
         self.cookies_updated.emit()
 
     @staticmethod
@@ -146,23 +190,43 @@ class CookieManager(QObject):
         Get all cookies asynchronously.
 
         IMPORTANT: QtWebEngine provides NO synchronous cookie API.
-        Cookies are retrieved via async callback.
+        Cookies are collected via ``loadAllCookies`` which re-emits
+        ``cookieAdded`` for every stored cookie.
 
         Args:
             callback: Function(cookies_list) called when ready
                      cookies_list is list of QNetworkCookie objects
-
-        Example:
-            manager.get_all_cookies_async(
-                lambda cookies: print(f"Total: {len(cookies)}")
-            )
         """
         try:
-            self.cookie_store.getCookies(callback)
-            logger.debug("Requested cookie list")
-        except AttributeError as e:
-            logger.warning(f"getCookies not available: {e}")
-            # Fallback: call callback with empty list
+            # If the Qt build exposes a direct getAllCookies style API, try it.
+            if hasattr(self.cookie_store, "getAllCookies"):
+                self.cookie_store.getAllCookies(callback)  # type: ignore[attr-defined]
+                return
+            if hasattr(self.cookie_store, "getCookies"):
+                self.cookie_store.getCookies(callback)  # type: ignore[attr-defined]
+                return
+        except Exception as e:
+            logger.debug(f"Direct getCookies not available: {e}")
+
+        # Fallback: live cache (session + persistent) populated via signals.
+        # loadAllCookies re-emits persistent cookies; session cookies are already
+        # in the cache from earlier cookieAdded events (including setCookie).
+        try:
+            from PyQt6.QtCore import QTimer
+            try:
+                # Refresh persistent store — new persistent cookies will flow via signal
+                self.cookie_store.loadAllCookies()
+            except Exception as e:
+                logger.debug(f"loadAllCookies failed: {e}")
+
+            def deliver():
+                # Return a snapshot of the live cache
+                callback(list(self._cookie_cache.values()))
+
+            # Small delay so loadAllCookies signals have time to repopulate
+            QTimer.singleShot(350, deliver)
+        except Exception as e:
+            logger.warning(f"get_all_cookies_async fallback failed: {e}")
             callback([])
 
     def delete_cookie(self, cookie_name: str, domain: str = None) -> bool:
@@ -237,26 +301,74 @@ class CookieManager(QObject):
             manager.delete_all_cookies()
         """
         try:
-            if hasattr(self.cookie_store, 'deletePersistentCookies'):
-                self.cookie_store.deletePersistentCookies()
+            deleted = False
+            if hasattr(self.cookie_store, 'deleteAllCookies'):
+                try:
+                    self.cookie_store.deleteAllCookies()
+                    deleted = True
+                except Exception as e:
+                    logger.debug(f"deleteAllCookies failed: {e}")
             if hasattr(self.cookie_store, 'deleteSessionCookies'):
-                self.cookie_store.deleteSessionCookies()
-            logger.info("Deleted all cookies")
-            self.cookies_cleared.emit()
-            return True
+                try:
+                    self.cookie_store.deleteSessionCookies()
+                    deleted = True
+                except Exception as e:
+                    logger.debug(f"deleteSessionCookies failed: {e}")
+            if deleted:
+                # Clear local cache optimistically; real removal will flow via signals
+                try:
+                    self._cookie_cache.clear()
+                except Exception:
+                    pass
+                logger.info("Deleted all cookies")
+                self.cookies_cleared.emit()
+                return True
+            # Fallback: manually delete each cookie
+            def delete_all(cookies):
+                count = 0
+                for cookie in cookies:
+                    try:
+                        if self.cookie_store.deleteCookie(cookie):
+                            count += 1
+                    except Exception:
+                        pass
+                logger.info(f"Deleted {count} cookies (fallback method)")
+                self.cookies_cleared.emit()
 
-            # Fallback: manually delete each cookie (unreachable due to early return)
-            # def delete_all(cookies):
-            #     count = 0
-            #     for cookie in cookies:
-            #         if self.cookie_store.deleteCookie(cookie):
-            #             count += 1
-            #     logger.info(f"Deleted {count} cookies (fallback method)")
-            #     self.cookies_cleared.emit()
-            #
-            # self.get_all_cookies_async(delete_all)
+            self.get_all_cookies_async(delete_all)
+            return True
         except Exception as e:
             logger.error(f"Error deleting all cookies: {e}")
+            return False
+
+    def set_test_cookie(self, name: str, value: str, domain: str = "", path: str = "/", secure: bool = False, httponly: bool = False) -> bool:
+        """Create a test cookie via the live QWebEngineCookieStore.
+
+        Uses ``setCookie`` so the cookie flows through Chromium and is
+        subject to normal domain/path rules.  The origin URL is derived
+        from the domain when possible.
+        """
+        try:
+            from PyQt6.QtNetwork import QNetworkCookie
+            from PyQt6.QtCore import QUrl
+            cookie = QNetworkCookie()
+            # QNetworkCookie name/value are QByteArray
+            cookie.setName(name.encode() if isinstance(name, str) else name)
+            cookie.setValue(value.encode() if isinstance(value, str) else value)
+            if domain:
+                cookie.setDomain(domain)
+            if path:
+                cookie.setPath(path)
+            cookie.setSecure(secure)
+            cookie.setHttpOnly(httponly)
+            # Session cookies have no expiration; setting an expiration makes it persistent
+            # Leave expiration empty for session-style test (we want to show difference).
+            origin = QUrl(f"https://{domain}" if domain else "https://example.com")
+            self.cookie_store.setCookie(cookie, origin)
+            logger.info(f"Set test cookie: {name} domain={domain} path={path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to set test cookie {name}: {e}")
             return False
 
     def get_cookie_count_async(self, callback):

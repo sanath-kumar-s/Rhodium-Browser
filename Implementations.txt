@@ -1,0 +1,53 @@
+No Internet tab (fixing)
+middle click mouse button to move up or down
+proper animated closing and opening of the application
+integrate fonts
+fixing download manager
+adding custom scroll bar for my browser 
+create book mark window 
+opening local html file 
+
+
+
+
+
+
+
+
+=============DONE===============
+homepage
+basic buttons
+cmd debugger
+website openings
+history
+bookmarks
+history clearing and other functions
+No internet tab
+Rhodium://history 
+basic downloads
+advanced downloads
+Rhodium://downloads created
+smooth scrolling
+Favicon of each website on tabs
+quick access
+GUI remastered
+Security indicator
+proper window movement 
+properly implementing home shortcuts
+add open in new tab feature
+cookies management
+proper history manager 
+google acc integration
+
+
+
+
+
+
+
+
+============Future Implements==============
+
+
+proper password manager
+

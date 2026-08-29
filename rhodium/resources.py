@@ -1866,3 +1866,289 @@ render();
 </script>
 </body>
 </html>"""
+
+
+def get_cookie_debugger_page_html(cookies_json: str = "[]", diagnostics_json: str = "{}") -> str:
+    """Generate the rhodium://cookie-debugger internal page."""
+    safe_cookies = (cookies_json or "[]").replace("</", "<\\/")
+    safe_diag = (diagnostics_json or "{}").replace("</", "<\\/")
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cookie Debugger — Rhodium</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#0b0d10;color:#e8eaed;font-family:"Segoe UI",Inter,-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh}}
+.page{{max-width:1100px;margin:0 auto;padding:28px 24px 48px}}
+.header{{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}}
+.header h1{{font-size:22px;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}}
+.header h1 span.badge{{font-size:11px;font-weight:600;letter-spacing:.06em;padding:4px 8px;border-radius:999px;background:#14171d;border:1px solid #252b34;color:#9aa3b2}}
+.sub{{color:#8b939f;font-size:12px;margin-top:4px;max-width:720px;line-height:1.5}}
+.status-row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}}
+.pill{{display:inline-flex;align-items:center;gap:6px;background:#14171d;border:1px solid #252b34;border-radius:999px;padding:6px 10px;font-size:11px;color:#c6cad1}}
+.pill .dot{{width:8px;height:8px;border-radius:999px;background:#3dd68c;box-shadow:0 0 0 4px rgba(61,214,140,.15)}}
+.pill.off .dot{{background:#e06c75;box-shadow:0 0 0 4px rgba(224,108,117,.15)}}
+.pill b{{color:#eef1f5;font-weight:600}}
+.card{{background:#14171d;border:1px solid #252b34;border-radius:12px;padding:14px 16px;margin-bottom:14px}}
+.card h2{{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8b939f;margin-bottom:10px}}
+.grid2{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
+@media(max-width:760px){{.grid2{{grid-template-columns:1fr}}}}
+.kv{{background:#0f1217;border:1px solid #232831;border-radius:8px;padding:10px 12px}}
+.kv .k{{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6f7785;margin-bottom:4px}}
+.kv .v{{font-size:12px;color:#d5dae3;word-break:break-all}}
+.kv .v.mono{{font-family:ui-monospace,Consolas,monospace;font-size:11px}}
+.toolbar{{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}}
+.toolbar .left{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1}}
+.search{{background:#0f1217;border:1px solid #2b2f36;border-radius:9px;color:#e1e4e8;padding:9px 12px;font-size:12.5px;width:min(360px,100%);outline:none}}
+.search:focus{{border-color:#426cae}}
+.select, .input-sm{{background:#0f1217;border:1px solid #2b2f36;border-radius:7px;color:#d5dae3;padding:8px 10px;font-size:12px;outline:none}}
+.select:focus,.input-sm:focus{{border-color:#426cae}}
+.btn{{background:#1b1e24;color:#c6cad1;border:1px solid #2b2f36;border-radius:7px;padding:8px 12px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}}
+.btn:hover{{background:#252930;color:#fff}}
+.btn.primary{{background:#315f9d;color:#fff;border-color:#315f9d}}
+.btn.primary:hover{{background:#3b6fae}}
+.btn.danger{{background:#2a1515;color:#ff9c9c;border-color:#4a2020}}
+.btn.danger:hover{{background:#4a2020}}
+.table-wrap{{overflow:auto;border:1px solid #252b34;border-radius:10px;background:#0f1217}}
+table{{width:100%;border-collapse:collapse;min-width:860px}}
+thead th{{text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#747b86;background:#11141a;padding:10px 10px;border-bottom:1px solid #252b34;position:sticky;top:0}}
+tbody td{{padding:9px 10px;border-bottom:1px solid #1b1f27;font-size:12px;color:#d5dae3;vertical-align:top;max-width:240px;word-break:break-all}}
+tbody tr{{cursor:pointer}}
+tbody tr:hover{{background:#171b22}}
+.badge-yes{{background:#16301f;color:#7ee8a6;border:1px solid #1f4d2e;padding:2px 6px;border-radius:999px;font-size:10px;font-weight:700}}
+.badge-no{{background:#1e232e;color:#8aa0c8;border:1px solid #2b3446;padding:2px 6px;border-radius:999px;font-size:10px;font-weight:700}}
+.muted{{color:#6f7785}}
+.masked{{letter-spacing:2px}}
+.empty{{text-align:center;color:#636b78;padding:32px 16px;font-size:13px}}
+.modal{{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}}
+.modal.open{{display:flex}}
+.modal-card{{background:#14171d;border:1px solid #2b3446;border-radius:12px;max-width:620px;width:100%;padding:16px;max-height:85vh;overflow:auto}}
+.modal-card h3{{font-size:14px;margin-bottom:8px}}
+.dl{{display:grid;grid-template-columns:140px 1fr;gap:8px;font-size:12px;margin-top:10px}}
+.dl dt{{color:#8b939f}}
+.dl dd{{color:#eef1f5;word-break:break-all;font-family:ui-monospace,Consolas,monospace;font-size:11px}}
+.details-actions{{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}}
+.chk{{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#9aa3b2}}
+.raw{{background:#0f1217;border:1px solid #232831;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;color:#9aa3b2;max-height:260px;overflow:auto}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Cookie Debugger <span class="badge">Developer</span></h1>
+      <div class="sub">Inspect cookies stored by the current Rhodium profile. QtWebEngine's <b>QWebEngineCookieStore</b> remains the source of truth — nothing is deleted automatically.</div>
+      <div class="status-row" id="statusRow"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn primary" id="refreshBtn">↻ Refresh</button>
+    </div>
+  </div>
+
+  <div class="card" id="statsCard"></div>
+
+  <div class="card">
+    <h2>Profile Diagnostics</h2>
+    <div class="grid2" id="diagGrid"></div>
+    <div style="margin-top:10px"><button class="btn" id="toggleRaw">Show Raw Debug Information</button></div>
+    <div id="rawWrap" style="display:none;margin-top:10px"><div class="raw" id="rawBox"></div></div>
+  </div>
+
+  <div class="card">
+    <h2>Cookies</h2>
+    <div class="toolbar">
+      <div class="left">
+        <input class="search" id="search" placeholder="Search cookies... (name, domain, path)">
+        <select class="select" id="typeFilter"><option value="all">All</option><option value="persistent">Persistent</option><option value="session">Session</option></select>
+        <label class="chk"><input type="checkbox" id="secureOnly"> Secure only</label>
+        <label class="chk"><input type="checkbox" id="httpOnlyOnly"> HttpOnly only</label>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="clearFilter">Clear filters</button>
+        <button class="btn danger" id="deleteAllBtn">Delete All Cookies</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>Session</th><th>Secure</th><th>HttpOnly</th><th>SameSite</th><th>Expiration</th><th></th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div id="empty" class="empty" style="display:none">No cookies match your filters.</div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn danger" id="deleteDomainBtn">Delete Cookies for Domain</button>
+      <span class="muted" style="font-size:11px;align-self:center">Uses the current search domain or prompts for one.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Test Cookie</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:#9aa3b2">Name<input class="input-sm" id="testName" value="rhodium_test" style="width:180px"></label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:#9aa3b2">Value<input class="input-sm" id="testValue" value="hello" style="width:180px"></label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:#9aa3b2">Domain (optional)<input class="input-sm" id="testDomain" placeholder="example.com" style="width:160px"></label>
+      <button class="btn primary" id="setTestBtn">Set Test Cookie</button>
+      <button class="btn" id="refreshBtn2">Refresh Cookies</button>
+    </div>
+    <div class="muted" style="font-size:11px;margin-top:6px">Creates a cookie via the live <code>QWebEngineCookieStore.setCookie</code>. Refresh to see it.</div>
+  </div>
+
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-card">
+    <h3 id="modalTitle">Cookie Details</h3>
+    <div class="dl" id="modalDl"></div>
+    <div class="details-actions">
+      <button class="btn" id="toggleValue">Show Value</button>
+      <button class="btn danger" id="modalDelete">Delete This Cookie</button>
+      <button class="btn" id="modalClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const COOKIES = {safe_cookies};
+const DIAG = {safe_diag};
+
+function esc(s){{return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}}
+function fmtExp(c){{ if(c.is_session) return '— (Session)'; if(!c.expiration) return 'Unknown'; try{{ const d=new Date(c.expiration); if(isNaN(d)) return esc(c.expiration); return d.toLocaleString() }}catch(e){{return esc(c.expiration)}} }}
+function sameSiteLabel(v){{ const m={{0:'Default',1:'None',2:'Lax',3:'Strict'}}; return m[v]!==undefined?m[v]:(v||'Unknown') }}
+
+let currentModal = null;
+let revealed = false;
+
+function renderStatus(){{
+  const row=document.getElementById('statusRow');
+  const isPersistent = DIAG.is_persistent;
+  const cls = isPersistent ? 'pill' : 'pill off';
+  const dotLabel = isPersistent ? 'Profile: Persistent' : 'Profile: Session / Off-the-record';
+  row.innerHTML = '<span class=\"'+cls+'\"><span class=\"dot\"></span><b>'+esc(dotLabel)+'</b></span>'
+    + '<span class=\"pill\"><b>Storage Path:</b>&nbsp;<span class=\"mono\">'+esc(DIAG.storage_path||'Unknown')+'</span></span>'
+    + '<span class=\"pill\"><b>Cookie Store:</b>&nbsp;'+(DIAG.cookie_connected?'Connected':'Not connected')+'</span>'
+    + '<span class=\"pill\"><b>Total Cookies:</b>&nbsp;'+COOKIES.length+'</span>';
+}}
+
+function renderStats(){{
+  const el=document.getElementById('statsCard');
+  const total=COOKIES.length;
+  const sess=COOKIES.filter(c=>c.is_session).length;
+  const pers=total-sess;
+  const sec=COOKIES.filter(c=>c.secure).length;
+  el.innerHTML = '<h2>Overview</h2><div class=\"grid2\">'
+    + '<div class=\"kv\"><div class=\"k\">Total Cookies</div><div class=\"v\">'+total+'</div></div>'
+    + '<div class=\"kv\"><div class=\"k\">Persistent / Session</div><div class=\"v\">'+pers+' persistent · '+sess+' session</div></div>'
+    + '<div class=\"kv\"><div class=\"k\">Secure</div><div class=\"v\">'+sec+' secure</div></div>'
+    + '<div class=\"kv\"><div class=\"k\">Storage Path</div><div class=\"v mono\">'+esc(DIAG.storage_path||'Unknown')+'</div></div>'
+    + '</div>';
+}}
+
+function renderDiagnostics(){{
+  const g=document.getElementById('diagGrid');
+  function kv(k,v){{return '<div class=\"kv\"><div class=\"k\">'+esc(k)+'</div><div class=\"v mono\">'+esc(v||'Unknown')+'</div></div>'}}
+  g.innerHTML = kv('Profile type', DIAG.profile_type)
+    + kv('Persistent storage path', DIAG.storage_path)
+    + kv('Cache path', DIAG.cache_path)
+    + kv('Cookie store', DIAG.cookie_connected?'Connected':'Not connected')
+    + kv('Persistent cookies policy', DIAG.cookies_policy)
+    + kv('Persistent permissions policy', DIAG.permissions_policy||'Not exposed by QtWebEngine');
+  const raw=document.getElementById('rawBox');
+  raw.textContent = JSON.stringify({{diagnostics:DIAG, cookie_count:COOKIES.length, sample: COOKIES.slice(0,3)}}, null, 2);
+}}
+
+let filtered = COOKIES.slice();
+function applyFilters(){{
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  const type=document.getElementById('typeFilter').value;
+  const secOnly=document.getElementById('secureOnly').checked;
+  const httpOnlyOnly=document.getElementById('httpOnlyOnly').checked;
+  filtered = COOKIES.filter(c=>{{
+    if(q && !( (c.name||'').toLowerCase().includes(q) || (c.domain||'').toLowerCase().includes(q) || (c.path||'').toLowerCase().includes(q) )) return false;
+    if(type==='persistent' && c.is_session) return false;
+    if(type==='session' && !c.is_session) return false;
+    if(secOnly && !c.secure) return false;
+    if(httpOnlyOnly && !c.httponly) return false;
+    return true;
+  }});
+  renderTable();
+}}
+
+function renderTable(){{
+  const tb=document.getElementById('tbody');
+  const empty=document.getElementById('empty');
+  tb.innerHTML='';
+  if(!filtered.length){{ empty.style.display='block'; return }} else empty.style.display='none';
+  for(let i=0;i<filtered.length;i++){{ const c=filtered[i];
+    const tr=document.createElement('tr');
+    tr.dataset.idx = COOKIES.indexOf(c);
+    tr.innerHTML = '<td>'+esc(c.name)+'</td>'
+      + '<td class=\"masked\">••••••••</td>'
+      + '<td>'+esc(c.domain)+'</td>'
+      + '<td>'+esc(c.path)+'</td>'
+      + '<td>'+(c.is_session?'<span class=\"badge-yes\">YES</span>':'<span class=\"badge-no\">NO</span>')+'</td>'
+      + '<td>'+(c.secure?'YES':'NO')+'</td>'
+      + '<td>'+(c.httponly?'YES':'NO')+'</td>'
+      + '<td>'+esc(c.samesite||'Unknown')+'</td>'
+      + '<td>'+esc(fmtExp(c))+'</td>'
+      + '<td><button class=\"btn\" data-del=\"'+COOKIES.indexOf(c)+'\">Delete</button></td>';
+    tr.addEventListener('click', (e)=>{{ if(e.target.closest('button')) return; openModal(c); }});
+    tb.appendChild(tr);
+  }}
+  tb.querySelectorAll('[data-del]').forEach(b=>{{ b.addEventListener('click', (e)=>{{ e.stopPropagation(); const idx=parseInt(b.dataset.del,10); const c=COOKIES[idx]; if(!c) return; if(!confirm('Delete cookie \"'+c.name+'\" for '+c.domain+' ?')) return; window.location.href='rhodium://cookie-debugger-delete?name='+encodeURIComponent(c.name)+'&domain='+encodeURIComponent(c.domain)+'&path='+encodeURIComponent(c.path); }}) }})
+}}
+
+function openModal(c){{
+  currentModal=c; revealed=false;
+  const modal=document.getElementById('modal');
+  const dl=document.getElementById('modalDl');
+  const title=document.getElementById('modalTitle');
+  title.textContent = c.name + ' — ' + (c.is_session?'Session Cookie':'Persistent Cookie');
+  title.style.color = c.is_session ? '#ff9c9c' : '#7ee8a6';
+  function row(k,v){{return '<dt>'+esc(k)+'</dt><dd>'+esc(v)+'</dd>'}}
+  dl.innerHTML = row('Name', c.name)
+    + row('Value', '••••••••')
+    + row('Domain', c.domain)
+    + row('Path', c.path)
+    + row('Session Cookie', c.is_session?'YES — session only':'NO — persistent')
+    + row('Secure', c.secure?'YES':'NO')
+    + row('HttpOnly', c.httponly?'YES':'NO')
+    + row('SameSite', c.samesite||'Unknown')
+    + row('Expiration', fmtExp(c))
+    + row('Source', c.domain||'Unknown');
+  document.getElementById('toggleValue').textContent='Show Value';
+  modal.classList.add('open');
+}}
+function closeModal(){{ document.getElementById('modal').classList.remove('open'); currentModal=null; }}
+
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modal').addEventListener('click', (e)=>{{ if(e.target.id==='modal') closeModal(); }});
+document.getElementById('toggleValue').addEventListener('click', ()=>{{
+  if(!currentModal) return;
+  const dd=document.querySelectorAll('#modalDl dd')[1];
+  if(!revealed){{ dd.textContent=currentModal.value; document.getElementById('toggleValue').textContent='Hide Value'; revealed=true; }}
+  else {{ dd.textContent='••••••••'; document.getElementById('toggleValue').textContent='Show Value'; revealed=false; }}
+}});
+document.getElementById('modalDelete').addEventListener('click', ()=>{{
+  if(!currentModal) return;
+  if(!confirm('Delete cookie \"'+currentModal.name+'\" for '+currentModal.domain+' ?')) return;
+  window.location.href='rhodium://cookie-debugger-delete?name='+encodeURIComponent(currentModal.name)+'&domain='+encodeURIComponent(currentModal.domain)+'&path='+encodeURIComponent(currentModal.path);
+}});
+
+document.getElementById('search').addEventListener('input', applyFilters);
+document.getElementById('typeFilter').addEventListener('change', applyFilters);
+document.getElementById('secureOnly').addEventListener('change', applyFilters);
+document.getElementById('httpOnlyOnly').addEventListener('change', applyFilters);
+document.getElementById('clearFilter').addEventListener('click', ()=>{{ document.getElementById('search').value=''; document.getElementById('typeFilter').value='all'; document.getElementById('secureOnly').checked=false; document.getElementById('httpOnlyOnly').checked=false; applyFilters(); }});
+document.getElementById('refreshBtn').addEventListener('click', ()=>{{ window.location.href='rhodium://cookie-debugger-refresh'; }});
+document.getElementById('refreshBtn2').addEventListener('click', ()=>{{ window.location.href='rhodium://cookie-debugger-refresh'; }});
+document.getElementById('deleteAllBtn').addEventListener('click', ()=>{{ if(!confirm('Delete all cookies from Rhodium?')) return; window.location.href='rhodium://cookie-debugger-delete-all'; }});
+document.getElementById('deleteDomainBtn').addEventListener('click', ()=>{{ let d=(document.getElementById('search').value||'').trim(); if(!d || d.includes(' ')) d=prompt('Enter domain to clear (e.g. example.com):','')||''; if(!d) return; window.location.href='rhodium://cookie-debugger-delete-domain?domain='+encodeURIComponent(d); }});
+document.getElementById('toggleRaw').addEventListener('click', ()=>{{ const w=document.getElementById('rawWrap'); const b=document.getElementById('toggleRaw'); if(w.style.display==='none'){{w.style.display='block';b.textContent='Hide Raw Debug Information'}} else {{w.style.display='none';b.textContent='Show Raw Debug Information'}} }});
+document.getElementById('setTestBtn').addEventListener('click', ()=>{{ const n=document.getElementById('testName').value.trim()||'rhodium_test'; const v=document.getElementById('testValue').value; const d=document.getElementById('testDomain').value.trim(); window.location.href='rhodium://cookie-debugger-set-test?name='+encodeURIComponent(n)+'&value='+encodeURIComponent(v)+'&domain='+encodeURIComponent(d); }});
+
+renderStatus(); renderStats(); renderDiagnostics(); applyFilters();
+</script>
+</body>
+</html>"""

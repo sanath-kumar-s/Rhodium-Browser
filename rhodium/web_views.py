@@ -80,6 +80,37 @@ class RhodiumWebEnginePage(QWebEnginePage):
             if self._view is not None:
                 self.browser_window.show_downloads_in_view(self._view)
             return False
+        elif url_str.split("?")[0] == "rhodium://cookie-debugger":
+            if self._view is not None:
+                # Re-render uses live CookieManager data (async); avoid creating any new profile.
+                self.browser_window.show_cookie_debugger_in_view(self._view)
+            return False
+        elif url_str.startswith("rhodium://cookie-debugger-refresh"):
+            if self._view is not None:
+                self.browser_window.show_cookie_debugger_in_view(self._view)
+            return False
+        elif url_str.startswith("rhodium://cookie-debugger-delete-all"):
+            self.browser_window.handle_cookie_debugger_delete_all()
+            return False
+        elif url_str.startswith("rhodium://cookie-debugger-delete-domain"):
+            params = urllib.parse.parse_qs(url.query())
+            domain = params.get("domain", [""])[0]
+            self.browser_window.handle_cookie_debugger_delete_domain(domain)
+            return False
+        elif url_str.startswith("rhodium://cookie-debugger-delete?"):
+            params = urllib.parse.parse_qs(url.query())
+            name = params.get("name", [""])[0]
+            domain = params.get("domain", [""])[0]
+            path = params.get("path", [""])[0]
+            self.browser_window.handle_cookie_debugger_delete(name, domain, path)
+            return False
+        elif url_str.startswith("rhodium://cookie-debugger-set-test"):
+            params = urllib.parse.parse_qs(url.query())
+            name = params.get("name", ["rhodium_test"])[0]
+            value = params.get("value", ["hello"])[0]
+            domain = params.get("domain", [""])[0]
+            self.browser_window.handle_cookie_debugger_set_test(name, value, domain)
+            return False
         elif url_str.startswith("rhodium://add-shortcut"):
             self.browser_window.add_shortcut_dialog()
             return False
