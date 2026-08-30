@@ -394,7 +394,9 @@ class AdvancedBrowser(QMainWindow):
 
     def init_ui(self):
         # Frameless window
-        self.setWindowFlags(Qt.WindowType.CustomizeWindowHint | Qt.WindowType.Window)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType)
+        # self.setWindowFlags(Qt.WindowType.CustomizeWindowHint | Qt.WindowType)
+
         self._drag_pos = QPoint()
 
         # Central container
