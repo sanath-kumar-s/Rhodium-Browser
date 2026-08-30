@@ -52,6 +52,10 @@ class RhodiumWebEnginePage(QWebEnginePage):
             if self._view is not None:
                 self._view.setUrl(QUrl(decoded_url))
             return False
+        elif url_str.split("?")[0] == "rhodium://home":
+            if self._view is not None:
+                self.browser_window.load_url("rhodium://home")
+            return False
         elif url_str.startswith("rhodium://download-action?"):
             params = urllib.parse.parse_qs(url.query())
             download_id = int(params.get("id", ["-1"])[0])
