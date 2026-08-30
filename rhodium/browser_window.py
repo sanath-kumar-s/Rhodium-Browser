@@ -23,7 +23,7 @@ from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 
 from rhodium.utils import icon
-from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html, get_downloads_page_html, get_history_page_html, get_cookie_debugger_page_html
+from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html, get_downloads_page_html, get_history_page_html, get_cookie_debugger_page_html, get_bookmarks_page_html
 from rhodium.settings_dialog import SettingsDialog
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
@@ -394,8 +394,8 @@ class AdvancedBrowser(QMainWindow):
 
     def init_ui(self):
         # Frameless window
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType)
-        # self.setWindowFlags(Qt.WindowType.CustomizeWindowHint | Qt.WindowType)
+        # self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.CustomizeWindowHint)
 
         self._drag_pos = QPoint()
 
@@ -676,6 +676,8 @@ class AdvancedBrowser(QMainWindow):
         bm_menu = m.addMenu(icon("bookmark-empty.png"), "Bookmarks")
         bm_menu.addAction("Add Bookmark",    self.add_bookmark).setShortcut(QKeySequence("Ctrl+D"))
         bm_menu.addAction("Manage Bookmarks", self.manage_bookmarks)
+        bm_menu.addAction(icon("bookmark-filled.png"), "Open Bookmarks Page",
+                          self.open_bookmarks_page)
         bm_menu.addSeparator()
         if self.bookmarks:
             for bm in self.bookmarks:
@@ -787,6 +789,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_history_in_view(view)
         elif url.split("?")[0] == "rhodium://cookie-debugger":
             self.show_cookie_debugger_in_view(view)
+        elif url.split("?")[0] == "rhodium://bookmarks":
+            self.show_bookmarks_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1001,6 +1005,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_history_in_view(view)
         elif url.split("?")[0] == "rhodium://cookie-debugger":
             self.show_cookie_debugger_in_view(view)
+        elif url.split("?")[0] == "rhodium://bookmarks":
+            self.show_bookmarks_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1016,6 +1022,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_history_in_view(view)
         elif url.split("?")[0] == "rhodium://cookie-debugger":
             self.show_cookie_debugger_in_view(view)
+        elif url.split("?")[0] == "rhodium://bookmarks":
+            self.show_bookmarks_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1129,6 +1137,55 @@ class AdvancedBrowser(QMainWindow):
             self.save_history()
         self.refresh_history_tabs()
         self.status_label.setText(f"Cleared {label}.")
+
+    # ── Bookmarks page ──────────────────────────────────────────────────
+    def open_bookmarks_page(self):
+        self.load_url("rhodium://bookmarks")
+
+    def show_bookmarks_in_view(self, view):
+        """Render the internal rhodium://bookmarks page in a tab."""
+        try:
+            bookmarks_json = json.dumps(self.bookmarks, ensure_ascii=False)
+        except Exception:
+            bookmarks_json = "[]"
+        html = get_bookmarks_page_html(bookmarks_json)
+        view.setHtml(html, QUrl("rhodium://bookmarks"))
+        idx = self.tab_widget.indexOf(view)
+        if idx >= 0:
+            self.tab_widget.setTabText(idx, "Bookmarks")
+            self.tab_widget.setTabToolTip(idx, "Bookmarks")
+            self.tab_widget.setTabIcon(idx, icon("bookmark-filled.png"))
+
+    def refresh_bookmarks_tabs(self):
+        """Re-render every open bookmarks tab."""
+        for i in range(self.tab_widget.count()):
+            view = self.tab_widget.widget(i)
+            if isinstance(view, QWebEngineView):
+                if view.url().toString().split("?")[0] == "rhodium://bookmarks":
+                    try:
+                        bookmarks_json = json.dumps(self.bookmarks, ensure_ascii=False)
+                    except Exception:
+                        bookmarks_json = "[]"
+                    html = get_bookmarks_page_html(bookmarks_json)
+                    view.setHtml(html, QUrl("rhodium://bookmarks"))
+
+    def handle_bookmark_action(self, url: str, action: str):
+        if action == "delete" and url:
+            self.delete_bookmark(url)
+            self.refresh_bookmarks_tabs()
+            self.status_label.setText("Bookmark removed.")
+        elif action == "open" and url:
+            self.load_url(url)
+
+    def delete_bookmark(self, url: str):
+        """Remove a bookmark by URL using the existing bookmark list."""
+        url = (url or "").strip()
+        if not url:
+            return
+        self.bookmarks = [b for b in self.bookmarks if b.get("url") != url]
+        self.save_bookmarks()
+        self.update_main_menu()
+        self._update_bookmark_icon(url)
 
     # ── Cookie Debugger ───────────────────────────────────────────────────────
     def _get_cookie_debugger_diagnostics(self):
@@ -1951,6 +2008,9 @@ class AdvancedBrowser(QMainWindow):
             return
         if url_str.split("?")[0] == "rhodium://cookie-debugger":
             self.tab_widget.setTabIcon(idx, icon("info (2).png"))
+            return
+        if url_str.split("?")[0] == "rhodium://bookmarks":
+            self.tab_widget.setTabIcon(idx, icon("bookmark-filled.png"))
             return
         if "google.com/search" in url_str:
             self.tab_widget.setTabIcon(idx, icon("search.png"))

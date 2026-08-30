@@ -111,6 +111,16 @@ class RhodiumWebEnginePage(QWebEnginePage):
             domain = params.get("domain", [""])[0]
             self.browser_window.handle_cookie_debugger_set_test(name, value, domain)
             return False
+        elif url_str.startswith("rhodium://bookmark-action?"):
+            params = urllib.parse.parse_qs(url.query())
+            action = params.get("action", [""])[0]
+            target_url = params.get("url", [""])[0]
+            self.browser_window.handle_bookmark_action(target_url, action)
+            return False
+        elif url_str.split("?")[0] == "rhodium://bookmarks":
+            if self._view is not None:
+                self.browser_window.show_bookmarks_in_view(self._view)
+            return False
         elif url_str.startswith("rhodium://add-shortcut"):
             self.browser_window.add_shortcut_dialog()
             return False

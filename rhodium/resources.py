@@ -2152,3 +2152,168 @@ renderStatus(); renderStats(); renderDiagnostics(); applyFilters();
 </script>
 </body>
 </html>"""
+
+
+def get_bookmarks_page_html(bookmarks_json: str = "[]") -> str:
+    """Generate the rhodium://bookmarks internal page.
+
+    `bookmarks_json` is a JSON array of rows from the bookmark store.
+    Each row: {"name", "url"} where url is the bookmark target.
+    """
+    safe_json = bookmarks_json.replace("</", "<\\/")
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bookmarks — Rhodium</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+    background: #0b0d10; color: #e8eaed;
+    font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+}}
+.page {{ max-width: 920px; margin: 0 auto; padding: 32px 24px 48px; }}
+.header {{
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+}}
+.header h1 {{ font-size: 24px; font-weight: 600; letter-spacing: -.02em; }}
+.header-actions {{ display: flex; gap: 10px; align-items: center; flex: 1; justify-content: flex-end; }}
+.search {{
+    background: #181b21; border: 1px solid #2b2f36; border-radius: 9px;
+    color: #e1e4e8; padding: 8px 12px; font-size: 13px; width: min(280px, 100%);
+    outline: none;
+}}
+.search:focus {{ border-color: #426cae; }}
+.btn {{
+    background: #1b1e24; color: #c6cad1; border: 1px solid #2b2f36;
+    border-radius: 7px; padding: 8px 14px; font-size: 12px; cursor: pointer;
+}}
+.btn:hover {{ background: #252930; color: #fff; }}
+.btn-danger:hover {{ background: #4a2020; border-color: #6b3030; }}
+.section {{ margin-bottom: 26px; }}
+.section-title {{
+    font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: #747b86; margin: 18px 4px 10px;
+}}
+.list {{ display: flex; flex-direction: column; gap: 6px; }}
+.item {{
+    background: #14171d; border: 1px solid #252b34; border-radius: 10px;
+    padding: 10px 12px; display: grid; grid-template-columns: 30px 1fr auto;
+    gap: 12px; align-items: center; transition: border-color .15s, background .15s;
+    cursor: pointer;
+}}
+.item:hover {{ border-color: #353d49; background: #171b22; }}
+.fav-wrap {{
+    width: 28px; height: 28px; border-radius: 7px; background: #222730;
+    display: grid; place-items: center; overflow: hidden; font-size: 14px;
+}}
+.fav-wrap img {{ width: 20px; height: 20px; }}
+.meta {{ min-width: 0; }}
+.title {{
+    font-size: 13px; font-weight: 600; color: #eef1f5;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}}
+.sub {{ font-size: 11px; color: #8b939f; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.del {{
+    background: #242932; color: #d5dae3; border: none; border-radius: 6px;
+    padding: 6px 10px; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity .15s;
+}}
+.item:hover .del {{ opacity: 1; }}
+.del:hover {{ background: #4a2020; color: #ff9c9c; }}
+.empty {{ text-align: center; color: #636b78; padding: 48px 20px; font-size: 13px; }}
+.empty .big {{ font-size: 40px; opacity: .5; margin-bottom: 10px; }}
+</style>
+</head>
+<body>
+<div class="page">
+    <div class="header">
+        <h1>Bookmarks</h1>
+        <div class="header-actions">
+            <input type="search" class="search" id="search" placeholder="Search bookmarks…">
+        </div>
+    </div>
+    <div id="content"></div>
+    <div class="empty" id="empty-msg" style="display:none">
+        <div class="big">🔖</div>
+        <div>No bookmarks yet</div>
+        <div style="margin-top:6px;font-size:12px;color:#555d68">Add a bookmark using the bookmark button or Ctrl+D</div>
+    </div>
+</div>
+<script>
+const ALL_BOOKMARKS = {safe_json};
+
+function domainOf(url) {{
+    try {{ return new URL(url).hostname; }} catch (e) {{ return ''; }}
+}}
+function escapeHtml(s) {{
+    return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}}
+function faviconOf(url) {{
+    const dom = domainOf(url);
+    if (dom) {{
+        return '<img src="https://www.google.com/s2/favicons?sz=32&domain='
+            + encodeURIComponent(dom)
+            + '" onerror="this.style.display=&quot;none&quot;;this.parentNode.textContent=&quot;🌐&quot;">';
+    }}
+    return '🌐';
+}}
+function delHref(url) {{
+    return 'rhodium://bookmark-action?action=delete&url=' + encodeURIComponent(url);
+}}
+function navigateHref(url) {{
+    return 'rhodium://navigate?q=' + encodeURIComponent(url);
+}}
+
+function render() {{
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    let items = ALL_BOOKMARKS;
+    if (q) {{
+        items = items.filter(b =>
+            (b.name || '').toLowerCase().includes(q) ||
+            (b.url || '').toLowerCase().includes(q)
+        );
+    }}
+    const content = document.getElementById('content');
+    content.innerHTML = '';
+    if (items.length) {{
+        const list = document.createElement('div');
+        list.className = 'list';
+        items.forEach(b => {{
+            const title = b.name && b.name.trim() ? b.name : b.url;
+            const url = b.url || '';
+            list.innerHTML += '<div class="item" data-nav="' + navigateHref(url) + '">'
+                + '<div class="fav-wrap">' + faviconOf(url) + '</div>'
+                + '<div class="meta"><div class="title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>'
+                + '<div class="sub" title="' + escapeHtml(url) + '">' + escapeHtml(url) + '</div></div>'
+                + '<button class="del" data-del="' + delHref(url) + '">Remove</button>'
+                + '</div>';
+        }});
+        content.appendChild(list);
+    }}
+    document.getElementById('empty-msg').style.display = items.length ? 'none' : 'block';
+
+    content.querySelectorAll('.item').forEach(el => {{
+        el.addEventListener('click', e => {{
+            if (e.target.closest('.del')) return;
+            window.location.href = el.dataset.nav;
+        }});
+    }});
+    content.querySelectorAll('.del').forEach(el => {{
+        el.addEventListener('click', e => {{
+            e.stopPropagation();
+            window.location.href = el.dataset.del;
+        }});
+    }});
+}}
+
+document.getElementById('search').addEventListener('input', render);
+render();
+</script>
+</body>
+</html>"""

@@ -137,9 +137,18 @@ class CookieManager(QObject):
     def _on_cookie_added(self, cookie):
         """Internal: called when cookie added."""
         try:
-            self._cookie_cache[self._cookie_key(cookie)] = cookie
+            from PyQt6.QtNetwork import QNetworkCookie
+            # Copy the cookie - the signal argument is a temporary reference
+            # that will be destroyed after the slot returns. Storing it directly
+            # would leave a dangling wrapper with empty data and could crash
+            # Chromium when later accessed.
+            copy = QNetworkCookie(cookie)
+            self._cookie_cache[self._cookie_key(copy)] = copy
         except Exception:
-            pass
+            try:
+                self._cookie_cache[self._cookie_key(cookie)] = cookie
+            except Exception:
+                pass
         logger.debug(f"Cookie added: {self._cookie_to_string(cookie)}")
         self.cookie_added.emit(cookie)
         self.cookies_updated.emit()
@@ -163,7 +172,9 @@ class CookieManager(QObject):
                 self._cookie_cache.pop(self._cookie_key(cookie), None)
                 self.cookie_removed.emit(cookie)
             else:
-                self._cookie_cache[self._cookie_key(cookie)] = cookie
+                from PyQt6.QtNetwork import QNetworkCookie
+                copy = QNetworkCookie(cookie)
+                self._cookie_cache[self._cookie_key(copy)] = copy
                 self.cookie_added.emit(cookie)
         except Exception:
             if removed:
