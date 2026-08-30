@@ -149,7 +149,7 @@ Before installing RHODIUM, make sure you have:
 **Step 1: Clone the repository**
 
 ```bash
-git clone <your-repo-url> RhodiumBrowser
+git clone https://github.com/sanath-kumar-s/Rhodium-Browser.git RhodiumBrowser
 cd RhodiumBrowser
 ```
 
