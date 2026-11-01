@@ -6,6 +6,43 @@ place lets the Qt stylesheet and the inline page CSS stay perfectly in sync.
 """
 
 # ── Palette ───────────────────────────────────────────────────────────────────
+DARK_PALETTE = {
+    "bg_app": "#16181D",
+    "bg_surface": "#1F232B",
+    "bg_sunken": "#262B34",
+    "bg_hover": "#2C323D",
+    "bg_active": "#353C49",
+    "bg_inset": "#1A1E24",
+
+    "border": "#2A2F39",
+    "border_strong": "#3A414E",
+    "border_focus": "#8F74E8",
+
+    "text_primary": "#ECEEF2",
+    "text_secondary": "#A6AEBE",
+    "text_muted": "#6E7686",
+
+    "accent": "#8F74E8",
+    "accent_hover": "#A386EE",
+    "accent_pressed": "#7D63DD",
+    "accent_soft": "#2E2A45",
+    "accent_soft_hover": "#3A3455",
+    "on_accent": "#FFFFFF",
+
+    "success": "#3FC586",
+    "success_soft": "#14382A",
+    "warning": "#E5A04D",
+    "warning_soft": "#3A2B16",
+    "danger": "#F06064",
+    "danger_hover": "#E84C50",
+    "danger_soft": "#3A1F21",
+
+    "selection": "#4A3E7A",
+    "shadow_sm": "0 1px 2px rgba(0,0,0,0.4)",
+    "shadow_md": "0 6px 20px rgba(0,0,0,0.4)",
+    "shadow_lg": "0 18px 44px rgba(0,0,0,0.5)",
+}
+
 PALETTE = {
     # Backgrounds
     "bg_app": "#F5F6F8",          # window / page backdrop
@@ -50,13 +87,22 @@ PALETTE = {
 }
 
 
-def token(name: str) -> str:
-    return PALETTE.get(name, name)
+def token(name: str, theme: str = "light") -> str:
+    palette = DARK_PALETTE if theme == "dark" else PALETTE
+    return palette.get(name, name)
 
 
-def css_vars(extra: dict = None) -> str:
+def _palette(theme: str) -> dict:
+    return DARK_PALETTE if theme == "dark" else PALETTE
+
+
+def is_dark_theme(theme: str) -> bool:
+    return theme == "dark"
+
+
+def css_vars(extra: dict = None, theme: str = "light") -> str:
     """Return a CSS `:root { ... }` block for the shared palette."""
-    src = dict(PALETTE)
+    src = dict(_palette(theme))
     if extra:
         src.update(extra)
     lines = []
@@ -68,9 +114,19 @@ def css_vars(extra: dict = None) -> str:
 
 
 # ── Qt stylesheet ────────────────────────────────────────────────────────────
-def qss() -> str:
-    """The full Qt stylesheet for Rhodium's native chrome (light + violet)."""
-    c = PALETTE
+def qss(theme: str = "light", accent: str = None) -> str:
+    """The full Qt stylesheet for Rhodium's native chrome.
+
+    ``theme`` may be "light" or "dark" (the Qt chrome does not react to the OS
+    scheme automatically, so "system" resolves to light at the caller).
+    ``accent`` optionally overrides the violet accent colour.
+    """
+    c = _palette(theme)
+    if accent:
+        c = dict(c)
+        c["accent"] = accent
+        c["accent_hover"] = accent
+        c["accent_pressed"] = accent
     return f"""
 /* =========================================================
    RHODIUM — LIGHT PREMIUM UI

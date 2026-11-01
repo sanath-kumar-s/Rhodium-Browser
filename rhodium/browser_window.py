@@ -23,14 +23,20 @@ from PyQt6.QtCore import Qt, QUrl, QSize, QPoint, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QAction, QDesktopServices, QKeySequence, QPixmap
 
 from rhodium.utils import icon
-from rhodium.resources import get_stylesheet, get_home_page_html, get_offline_page_html, get_downloads_page_html, get_history_page_html, get_cookie_debugger_page_html, get_bookmarks_page_html
+from rhodium.resources import (
+    get_stylesheet as resources_get_stylesheet,
+    get_home_page_html, get_offline_page_html, get_downloads_page_html,
+    get_history_page_html, get_cookie_debugger_page_html, get_bookmarks_page_html,
+)
 from rhodium.settings_dialog import SettingsDialog
+from rhodium.settings_service import get_settings_service, build_search_url, validate_search_url
+from rhodium.settings_page import get_settings_page_html
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
 from rhodium.download_manager import DownloadManager
 from rhodium.download_ui import DownloadToolbarButton
 from rhodium.database import get_database
-from rhodium.suggestions import SuggestionController
+from rhodium.suggestions import SuggestionController, Suggestion
 from rhodium.suggestion_popup import SuggestionLineEdit, SuggestionPopup
 from rhodium.cookie_manager import CookieManager
 from rhodium.fullscreen_controller import FullscreenController
@@ -349,11 +355,13 @@ class AdvancedBrowser(QMainWindow):
         self.config_dir.mkdir(exist_ok=True)
         self.bookmarks_file = self.config_dir / "bookmarks.json"
         self.history_file   = self.config_dir / "history.json"
-        self.settings_file  = self.config_dir / "settings.json"
+
+        # Centralized settings service — single source of truth for config.
+        self.settings_service = get_settings_service()
+        self.settings = self.settings_service.data
 
         self.bookmarks = self.load_bookmarks()
         self.history   = self.load_history()
-        self.settings  = self.load_settings()
         self.shortcuts_file = self.config_dir / "shortcuts.json"
         self.shortcuts = self.load_shortcuts()
 
@@ -365,6 +373,12 @@ class AdvancedBrowser(QMainWindow):
         self.suggestion_controller = SuggestionController(
             self.database,
             bookmarks_provider=lambda: self.bookmarks,
+        )
+        self.suggestion_controller.address_enabled_provider = (
+            lambda: self.settings_service.get("search.address_bar_suggestions", True)
+        )
+        self.suggestion_controller.search_enabled_provider = (
+            lambda: self.settings_service.get("search.suggestions_enabled", True)
         )
 
         # Shared home-page search suggestion popup (reused across home tabs)
@@ -378,6 +392,7 @@ class AdvancedBrowser(QMainWindow):
         self._downloads_refresh_timer.setInterval(500)
         self._downloads_refresh_timer.timeout.connect(self.refresh_downloads_tabs)
         self.download_manager.history_changed.connect(self._downloads_refresh_timer.start)
+        self.download_manager.download_updated.connect(self._downloads_refresh_timer.start)
 
         self._cookie_debugger_refresh_timer = QTimer(self)
         self._cookie_debugger_refresh_timer.setSingleShot(True)
@@ -386,12 +401,15 @@ class AdvancedBrowser(QMainWindow):
 
         self.setMenuBar(None)          # No old-style menu bar
         self.init_ui()
+        self.settings_service.setting_changed.connect(self._on_setting_changed)
+        self.settings_service.settings_reset.connect(self._on_settings_reset)
         self.apply_global_settings()
         self.cookie_manager = CookieManager()
         try:
             self.cookie_manager.cookies_updated.connect(self._cookie_debugger_refresh_timer.start)
         except Exception:
             pass
+        self.apply_theme()
         self.setStyleSheet(self.get_stylesheet())
 
     def _add_shortcut(self, key: str, slot):
@@ -760,14 +778,14 @@ class AdvancedBrowser(QMainWindow):
 
     def add_new_tab(self, url=None, activate=True):
         if url is None:
-            url = self.settings.get("home_page", "about:home")
+            url = self.settings_service.get("general.homepage", "about:home")
 
         view = SmoothWebEngineView()
         view.rhodium_browser = self
         page = RhodiumWebEnginePage(self, view, view, profile=get_web_profile())
         view.setPage(page)
 
-        view.setZoomFactor(self.settings.get("default_zoom", 100) / 100.0)
+        view.setZoomFactor(self.settings_service.get("general.zoom", 100) / 100.0)
 
         view.loadStarted.connect(lambda: self.on_load_started(view))
         view.loadProgress.connect(lambda p: self.on_load_progress(p, view))
@@ -794,7 +812,7 @@ class AdvancedBrowser(QMainWindow):
         self.tab_widget.setTabToolTip(idx, "New Tab")
 
         if url in ("about:home", "rhodium://home", "about:blank", ""):
-            view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+            view.setHtml(get_home_page_html(self.shortcuts, self._resolve_theme()), QUrl("about:blank"))
             QTimer.singleShot(50, lambda: self.url_bar.setFocus() or self.url_bar.selectAll())
         elif url.split("?")[0] == "rhodium://downloads":
             self.show_downloads_in_view(view)
@@ -804,6 +822,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_cookie_debugger_in_view(view)
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
+        elif url.split("?")[0] == "rhodium://settings":
+            self.show_settings_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -882,9 +902,10 @@ class AdvancedBrowser(QMainWindow):
             if "." in url_string and " " not in url_string:
                 url_string = "https://" + url_string
             else:
-                # Search executed through Rhodium's existing search mechanism.
+                # Unified search — the configured default engine from the
+                # central SettingsService drives every search entry point.
                 self.database.record_search(url_string.strip())
-                url_string = "https://www.google.com/search?q=" + urllib.parse.quote_plus(url_string)
+                url_string = self.settings_service.build_default_search_url(url_string)
         view.load(QUrl(url_string))
 
     def open_link_new_tab(self, url: str, activate: bool = True):
@@ -1015,7 +1036,7 @@ class AdvancedBrowser(QMainWindow):
         if not view:
             return
         if url in ("about:home", "rhodium://home"):
-            view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+            view.setHtml(get_home_page_html(self.shortcuts, self._resolve_theme()), QUrl("about:blank"))
         elif url.split("?")[0] == "rhodium://downloads":
             self.show_downloads_in_view(view)
         elif url.split("?")[0] == "rhodium://history":
@@ -1024,6 +1045,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_cookie_debugger_in_view(view)
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
+        elif url.split("?")[0] == "rhodium://settings":
+            self.show_settings_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1032,7 +1055,7 @@ class AdvancedBrowser(QMainWindow):
         if not view:
             return
         if url in ("about:home", "rhodium://home"):
-            view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+            view.setHtml(get_home_page_html(self.shortcuts, self._resolve_theme()), QUrl("about:blank"))
         elif url.split("?")[0] == "rhodium://downloads":
             self.show_downloads_in_view(view)
         elif url.split("?")[0] == "rhodium://history":
@@ -1041,6 +1064,8 @@ class AdvancedBrowser(QMainWindow):
             self.show_cookie_debugger_in_view(view)
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
+        elif url.split("?")[0] == "rhodium://settings":
+            self.show_settings_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1444,21 +1469,95 @@ class AdvancedBrowser(QMainWindow):
     def hide_home_popup(self):
         self._home_popup.hide()
 
+    def _fetch_remote_suggestions(self, query: str, callback):
+        """Fetch suggestions from the configured engine's endpoint (async)."""
+        if not self.settings_service.get("search.suggestions_enabled", True):
+            callback([])
+            return
+        url_str = self.settings_service.suggest_url_for(query)
+        if not url_str:
+            callback([])
+            return
+        nam = getattr(self, "_suggest_nam", None)
+        if nam is None:
+            from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
+            nam = QNetworkAccessManager(self)
+            self._suggest_nam = nam
+        from PyQt6.QtNetwork import QNetworkRequest
+        req = QNetworkRequest(QUrl(url_str))
+        req.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader,
+                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Rhodium")
+        try:
+            reply = nam.get(req)
+        except Exception:
+            callback([])
+            return
+
+        def on_finished():
+            items = []
+            try:
+                data = bytes(reply.readAll())
+                text = data.decode("utf-8", errors="ignore").strip()
+                if text.startswith("["):
+                    arr = json.loads(text)
+                    if isinstance(arr, list) and len(arr) >= 2 and isinstance(arr[1], list):
+                        raw = arr[1]
+                    elif isinstance(arr, list):
+                        raw = [x for x in arr if isinstance(x, str)]
+                    else:
+                        raw = []
+                    for x in raw[:10]:
+                        if isinstance(x, str) and x.strip():
+                            items.append(x.strip())
+                else:
+                    items = [x.strip('"') for x in text.splitlines() if x.strip()]
+            except Exception:
+                items = []
+            finally:
+                try:
+                    reply.deleteLater()
+                except RuntimeError:
+                    pass
+            callback(items)
+
+        reply.finished.connect(on_finished)
+
     def show_home_suggestions(self, query: str, view):
-        """Show previous-search suggestions under the home page search box."""
+        """Show suggestions under the home page search box.
+
+        Local history/recent-search suggestions are combined with remote
+        suggestions from the configured search engine when enabled.
+        """
         if self.get_current_view() is not view:
             return
-        suggestions = self.suggestion_controller.get_search_suggestions(query, limit=8)
-        if not suggestions:
-            self._home_popup.hide()
-            return
-        self._home_suggestions = suggestions
-        self._home_popup_view = view
-        view.page().runJavaScript(
-            "(function(){var r=document.getElementById('q').getBoundingClientRect();"
-            "return [r.left, r.top, r.width, r.height];})()",
-            self._position_home_popup,
-        )
+        local = self.suggestion_controller.get_search_suggestions(query, limit=8)
+
+        def finalize(remote):
+            if self.get_current_view() is not view:
+                return
+            combined = list(local)
+            seen = {s.primary.lower() for s in combined}
+            for item in remote:
+                if item.lower() in seen:
+                    continue
+                seen.add(item.lower())
+                combined.append(Suggestion(
+                    kind="search", primary=item, secondary="Search suggestion",
+                    payload=item, icon="search.png"))
+                if len(combined) >= 8:
+                    break
+            if not combined:
+                self._home_popup.hide()
+                return
+            self._home_suggestions = combined
+            self._home_popup_view = view
+            view.page().runJavaScript(
+                "(function(){var r=document.getElementById('q').getBoundingClientRect();"
+                "return [r.left, r.top, r.width, r.height];})()",
+                self._position_home_popup,
+            )
+
+        self._fetch_remote_suggestions(query, finalize)
 
     def _position_home_popup(self, rect):
         try:
@@ -1679,56 +1778,301 @@ class AdvancedBrowser(QMainWindow):
         if v: v.setZoomFactor(1.0)
 
     def open_settings(self):
-        SettingsDialog(self).exec()
+        self.load_url("rhodium://settings")
 
-    def load_settings(self):
+    # ── Centralized settings application ────────────────────────────────────
+    @staticmethod
+    def _resolve_theme() -> str:
+        theme = get_settings_service().get("general.theme", "light")
+        if theme == "system":
+            return "light"
+        return theme
+
+    def get_stylesheet(self) -> str:
+        accent = self.settings_service.get("appearance.accent_color", "#6D4FD8")
+        return resources_get_stylesheet(self._resolve_theme(), accent)
+
+    def _apply_appearance(self):
         try:
-            if self.settings_file.exists():
-                return json.loads(self.settings_file.read_text())
+            self.btn_home.setVisible(
+                bool(self.settings_service.get("appearance.show_home_button", True)))
         except Exception:
             pass
-        return {
-            "home_page": "about:home",
-            "download_dir": str(Path.home() / "Downloads"),
-            "ask_where_to_save": False,
-            "javascript_enabled": True,
-            "local_storage_enabled": True,
-            "cookies_enabled": True,
-            "cache_enabled": True,
-            "default_zoom": 100,
-            "theme": "Light"
-        }
 
-    def save_settings(self):
-        with open(self.settings_file, "w") as f:
-            json.dump(self.settings, f, indent=2)
 
-    def apply_global_settings(self):
+    def apply_theme(self):
+        theme = self._resolve_theme()
+        accent = self.settings_service.get("appearance.accent_color", "#6D4FD8")
+        self.setStyleSheet(resources_get_stylesheet(theme, accent))
+        self._apply_appearance()
+        self.refresh_internal_pages()
+
+    def apply_web_settings(self):
         profile = get_web_profile()
-        try:
-            profile.downloadRequested.disconnect()
-        except TypeError:
-            pass
-
-        profile.downloadRequested.connect(
-            self.download_manager.on_download_requested
-        )
+        s = self.settings_service
         profile.setHttpCacheType(
             QWebEngineProfile.HttpCacheType.DiskHttpCache
-            if self.settings.get("cache_enabled", True)
+            if s.get("privacy.cache_enabled", True)
             else QWebEngineProfile.HttpCacheType.NoCache
         )
-        s = profile.settings()
-        s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled,
-                        self.settings.get("javascript_enabled", True))
-        s.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled,
-                        self.settings.get("local_storage_enabled", True))
-        s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True)
-        self.setStyleSheet(self.get_stylesheet())
+        qs = profile.settings()
+        qs.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled,
+                        s.get("privacy.javascript_enabled", True))
+        qs.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled,
+                        s.get("privacy.local_storage_enabled", True))
+        qs.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True)
+        try:
+            if s.get("privacy.cookies_enabled", True):
+                profile.setPersistentCookiesPolicy(
+                    QWebEngineProfile.PersistentCookiesPolicy.AllowPersistentCookies)
+            else:
+                profile.setPersistentCookiesPolicy(
+                    QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
+        except Exception:
+            pass
+
+    def _apply_zoom_to_tabs(self, zoom):
         for i in range(self.tab_widget.count()):
             v = self.tab_widget.widget(i)
             if isinstance(v, QWebEngineView):
-                v.setZoomFactor(self.settings.get("default_zoom", 100) / 100.0)
+                v.setZoomFactor(max(0.2, min(3.0, zoom / 100.0)))
+
+    def apply_global_settings(self):
+        self.apply_web_settings()
+        self._apply_zoom_to_tabs(self.settings_service.get("general.zoom", 100))
+
+    def _on_setting_changed(self, key, value):
+        try:
+            if key == "general.theme" or key.startswith("appearance."):
+                self.apply_theme()
+            elif key == "general.zoom":
+                self._apply_zoom_to_tabs(value)
+            elif key.startswith("privacy."):
+                self.apply_web_settings()
+            elif key in ("general.homepage", "general.newtab_page"):
+                self.refresh_home_pages()
+            elif key == "search.default_engine":
+                self.status_label.setText("Default search engine updated.")
+        except RuntimeError:
+            pass
+
+    def _on_settings_reset(self):
+        self.apply_global_settings()
+        self.apply_theme()
+        self.refresh_internal_pages()
+        self.status_label.setText("Settings restored to defaults.")
+
+    def refresh_internal_pages(self):
+        self.refresh_home_pages()
+        self.refresh_settings_tabs()
+
+    # ── Settings page rendering ─────────────────────────────────────────────
+    def show_settings_in_view(self, view):
+        cat = "general"
+        try:
+            url_str = view.url().toString()
+            if "?" in url_str:
+                from urllib.parse import parse_qs
+                qs = parse_qs(url_str.split("?", 1)[1])
+                if "cat" in qs:
+                    cat = qs["cat"][0]
+        except Exception:
+            cat = "general"
+        payload = self._build_settings_payload(cat)
+        html = get_settings_page_html(payload)
+        target = f"rhodium://settings?cat={cat}"
+        view.setHtml(html, QUrl(target))
+        idx = self.tab_widget.indexOf(view)
+        if idx >= 0:
+            self.tab_widget.setTabText(idx, "Settings")
+            self.tab_widget.setTabToolTip(idx, "Settings — Rhodium")
+            self.tab_widget.setTabIcon(idx, icon("settings.png"))
+
+    def refresh_settings_tabs(self):
+        for i in range(self.tab_widget.count()):
+            view = self.tab_widget.widget(i)
+            if isinstance(view, QWebEngineView):
+                try:
+                    if view.url().toString().split("?")[0] == "rhodium://settings":
+                        self.show_settings_in_view(view)
+                except Exception:
+                    pass
+
+    def _build_settings_payload(self, cat):
+        s = self.settings_service.get_all()
+        payload = {
+            "settings": s,
+            "engines": self.settings_service.engines(),
+            "theme": self._resolve_theme(),
+            "cat": cat,
+            "cookies": [],
+            "downloads_count": len(self.download_manager.downloads),
+            "bookmarks_count": len(self.bookmarks),
+        }
+        try:
+            payload["history_count"] = self.database.history_row_count()
+        except Exception:
+            payload["history_count"] = 0
+        try:
+            raw_cookies = list(self.cookie_manager._cookie_cache.values())
+        except Exception:
+            raw_cookies = []
+        try:
+            payload["cookies"] = [self._cookie_to_dict(c) for c in raw_cookies]
+        except Exception:
+            payload["cookies"] = []
+        return payload
+
+    # ── Settings action handlers ────────────────────────────────────────────
+    def _coerce_setting(self, key, raw):
+        default = self.settings_service.get(key)
+        if isinstance(default, bool):
+            return str(raw).strip().lower() in ("true", "1", "yes", "on")
+        if isinstance(default, int):
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                return None
+        if key == "appearance.accent_color":
+            raw = str(raw).strip()
+            return raw if raw.startswith("#") else "#" + raw
+        return raw
+
+    def handle_settings_set(self, cat, key, raw):
+        value = self._coerce_setting(key, raw)
+        if value is not None:
+            self.settings_service.set(key, value)
+        self.refresh_internal_pages()
+
+    def handle_settings_reset(self, cat):
+        self.settings_service.reset()
+
+    def handle_settings_search_set_default(self, engine_id, cat):
+        if engine_id:
+            self.settings_service.set_default_engine(engine_id)
+        self.refresh_settings_tabs()
+
+    def handle_settings_search_delete(self, engine_id, cat):
+        if engine_id:
+            self.settings_service.delete_engine(engine_id)
+        self.refresh_settings_tabs()
+
+    def handle_settings_search_restore(self, cat):
+        self.settings_service.restore_engines()
+        self.refresh_settings_tabs()
+
+    def handle_settings_search_add(self, params, cat):
+        name = params.get("name", [""])[0]
+        url = params.get("url", [""])[0]
+        suggest = params.get("suggest", [""])[0]
+        keyword = params.get("keyword", [""])[0]
+        if validate_search_url(url):
+            self.settings_service.add_engine(name, url, suggest, keyword)
+        self.refresh_settings_tabs()
+
+    def handle_settings_search_edit(self, params, cat):
+        engine_id = params.get("id", [""])[0]
+        name = params.get("name", [None])[0]
+        url = params.get("url", [None])[0]
+        suggest = params.get("suggest", [None])[0]
+        keyword = params.get("keyword", [None])[0]
+        self.settings_service.edit_engine(engine_id, name=name, search_url=url,
+                                          suggest_url=suggest, keyword=keyword)
+        self.refresh_settings_tabs()
+
+    def handle_settings_cookie_delete(self, name, domain, cat):
+        if name:
+            self.cookie_manager.delete_cookie(name, domain or None)
+            QTimer.singleShot(400, self.refresh_settings_tabs)
+
+    def handle_settings_cookie_delete_domain(self, domain, cat):
+        if domain:
+            self.cookie_manager.delete_cookies_for_domain(domain)
+            QTimer.singleShot(450, self.refresh_settings_tabs)
+
+    def handle_settings_cookie_clear(self, cat):
+        self.cookie_manager.delete_all_cookies()
+        QTimer.singleShot(450, self.refresh_settings_tabs)
+
+    def handle_settings_history_clear(self, range_key, cat):
+        self.database.clear_history_range(range_key)
+        if range_key == "all":
+            self.history = []
+            self.save_history()
+        self.refresh_history_tabs()
+        self.refresh_settings_tabs()
+        self.status_label.setText("History cleared.")
+
+    def handle_settings_clear_data(self, what, cat):
+        if what in ("history", "all"):
+            self.database.clear_history()
+            self.history = []
+            self.save_history()
+            self.refresh_history_tabs()
+        if what in ("cache", "all"):
+            get_web_profile().clearHttpCache()
+        if what in ("cookies", "all"):
+            self.cookie_manager.delete_all_cookies()
+        if what in ("downloads", "all"):
+            self.download_manager.clear_history()
+            self.refresh_downloads_tabs()
+        self.refresh_settings_tabs()
+        self.status_label.setText("Browsing data cleared.")
+
+    def handle_settings_downloads_browse(self, cat):
+        current = self.settings_service.get("downloads.directory", str(Path.home() / "Downloads"))
+        chosen = QFileDialog.getExistingDirectory(self, "Select Download Directory", current)
+        if chosen:
+            self.settings_service.set("downloads.directory", chosen)
+        self.refresh_settings_tabs()
+
+    def handle_settings_downloads_open_folder(self, cat):
+        self.download_manager.open_download_folder()
+        self.refresh_settings_tabs()
+
+    def handle_settings_downloads_clear(self, cat):
+        self.download_manager.clear_history()
+        self.refresh_downloads_tabs()
+        self.refresh_settings_tabs()
+
+    def handle_settings_bookmarks_open(self, cat):
+        self.manage_bookmarks()
+        self.refresh_settings_tabs()
+
+    def handle_settings_bookmarks_import(self, cat):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Bookmarks", "", "JSON Files (*.json);;All Files (*)")
+        if path:
+            try:
+                data = json.loads(Path(path).read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    added = 0
+                    for item in data:
+                        if isinstance(item, dict) and item.get("url"):
+                            if not any(b["url"] == item["url"] for b in self.bookmarks):
+                                self.bookmarks.append({
+                                    "name": item.get("name", item["url"]),
+                                    "url": item["url"],
+                                })
+                                added += 1
+                    self.save_bookmarks()
+                    self.update_main_menu()
+                    self.status_label.setText(f"Imported {added} bookmarks.")
+            except Exception as e:
+                self.status_label.setText("Failed to import bookmarks.")
+        self.refresh_settings_tabs()
+
+    def handle_settings_bookmarks_export(self, cat):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Bookmarks", str(Path.home() / "rhodium-bookmarks.json"),
+            "JSON Files (*.json)")
+        if path:
+            try:
+                Path(path).write_text(json.dumps(self.bookmarks, indent=2), encoding="utf-8")
+                self.status_label.setText("Bookmarks exported.")
+            except Exception:
+                self.status_label.setText("Failed to export bookmarks.")
+        self.refresh_settings_tabs()
 
     def clear_all_cookies(self):
         """Clear all cookies."""
@@ -1859,9 +2203,6 @@ class AdvancedBrowser(QMainWindow):
         layout.addWidget(te)
         dlg.exec()
 
-    def get_stylesheet(self) -> str:
-        return get_stylesheet()
-
     # ── Shortcuts & Favicons Caching ───────────────────────────────────────────
     def load_shortcuts(self):
         if self.shortcuts_file.exists():
@@ -1926,12 +2267,13 @@ class AdvancedBrowser(QMainWindow):
             QTimer.singleShot(0, self.refresh_home_pages)
 
     def refresh_home_pages(self):
+        theme = self._resolve_theme()
         for i in range(self.tab_widget.count()):
             view = self.tab_widget.widget(i)
             if isinstance(view, QWebEngineView):
                 url = view.url().toString()
                 if url in ("about:home", "rhodium://home", "about:blank", ""):
-                    view.setHtml(get_home_page_html(self.shortcuts), QUrl("about:blank"))
+                    view.setHtml(get_home_page_html(self.shortcuts, theme), QUrl("about:blank"))
 
     def add_shortcut_dialog(self):
         dlg = ShortcutDialog(self)

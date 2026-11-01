@@ -138,6 +138,114 @@ class RhodiumWebEnginePage(QWebEnginePage):
             decoded_url = urllib.parse.unquote(target_url)
             self.browser_window.delete_shortcut(decoded_url)
             return False
+        elif url_str.split("?")[0] == "rhodium://settings":
+            if self._view is not None:
+                self.browser_window.show_settings_in_view(self._view)
+            return False
+        elif url_str.startswith("rhodium://settings-set"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["general"])[0]
+            key = params.get("key", [""])[0]
+            value = params.get("value", [""])[0]
+            if key:
+                self.browser_window.handle_settings_set(cat, key, value)
+            return False
+        elif url_str.startswith("rhodium://settings-reset"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["general"])[0]
+            self.browser_window.handle_settings_reset(cat)
+            return False
+        elif url_str.startswith("rhodium://settings-search-default"):
+            params = urllib.parse.parse_qs(url.query())
+            engine_id = params.get("id", [""])[0]
+            cat = params.get("cat", ["search"])[0]
+            self.browser_window.handle_settings_search_set_default(engine_id, cat)
+            return False
+        elif url_str.startswith("rhodium://settings-search-delete"):
+            params = urllib.parse.parse_qs(url.query())
+            engine_id = params.get("id", [""])[0]
+            cat = params.get("cat", ["search"])[0]
+            self.browser_window.handle_settings_search_delete(engine_id, cat)
+            return False
+        elif url_str.startswith("rhodium://settings-search-restore"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["search"])[0]
+            self.browser_window.handle_settings_search_restore(cat)
+            return False
+        elif url_str.startswith("rhodium://settings-search-add"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["search"])[0]
+            self.browser_window.handle_settings_search_add(params, cat)
+            return False
+        elif url_str.startswith("rhodium://settings-search-edit"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["search"])[0]
+            self.browser_window.handle_settings_search_edit(params, cat)
+            return False
+        elif url_str.startswith("rhodium://settings-cookie-delete"):
+            params = urllib.parse.parse_qs(url.query())
+            name = params.get("name", [""])[0]
+            domain = params.get("domain", [""])[0]
+            cat = params.get("cat", ["cookies"])[0]
+            self.browser_window.handle_settings_cookie_delete(name, domain, cat)
+            return False
+        elif url_str.startswith("rhodium://settings-cookie-delete-domain"):
+            params = urllib.parse.parse_qs(url.query())
+            domain = params.get("domain", [""])[0]
+            cat = params.get("cat", ["cookies"])[0]
+            self.browser_window.handle_settings_cookie_delete_domain(domain, cat)
+            return False
+        elif url_str.startswith("rhodium://settings-cookie-clear"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["cookies"])[0]
+            self.browser_window.handle_settings_cookie_clear(cat)
+            return False
+        elif url_str.startswith("rhodium://settings-history-clear"):
+            params = urllib.parse.parse_qs(url.query())
+            range_key = params.get("range", ["all"])[0]
+            cat = params.get("cat", ["history"])[0]
+            self.browser_window.handle_settings_history_clear(range_key, cat)
+            return False
+        elif url_str.startswith("rhodium://settings-history-open"):
+            params = urllib.parse.parse_qs(url.query())
+            self.browser_window.open_history_page()
+            return False
+        elif url_str.startswith("rhodium://settings-clear-data"):
+            params = urllib.parse.parse_qs(url.query())
+            what = params.get("what", ["all"])[0]
+            cat = params.get("cat", ["privacy"])[0]
+            self.browser_window.handle_settings_clear_data(what, cat)
+            return False
+        elif url_str.startswith("rhodium://settings-downloads-browse"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["downloads"])[0]
+            self.browser_window.handle_settings_downloads_browse(cat)
+            return False
+        elif url_str.startswith("rhodium://settings-downloads-open-folder"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["downloads"])[0]
+            self.browser_window.handle_settings_downloads_open_folder(cat)
+            return False
+        elif url_str.startswith("rhodium://settings-downloads-clear"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["downloads"])[0]
+            self.browser_window.handle_settings_downloads_clear(cat)
+            return False
+        elif url_str.startswith("rhodium://settings-bookmarks-open"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["bookmarks"])[0]
+            self.browser_window.handle_settings_bookmarks_open(cat)
+            return False
+        elif url_str.startswith("rhodium://settings-bookmarks-import"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["bookmarks"])[0]
+            self.browser_window.handle_settings_bookmarks_import(cat)
+            return False
+        elif url_str.startswith("rhodium://settings-bookmarks-export"):
+            params = urllib.parse.parse_qs(url.query())
+            cat = params.get("cat", ["bookmarks"])[0]
+            self.browser_window.handle_settings_bookmarks_export(cat)
+            return False
         return super().acceptNavigationRequest(url, nav_type, is_main_frame)
 
     def createWindow(self, window_type):

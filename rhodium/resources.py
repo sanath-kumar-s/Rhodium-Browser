@@ -6,8 +6,8 @@ from urllib.parse import urlparse
 
 from rhodium.theme import qss, css_vars, token
 
-def get_stylesheet() -> str:
-    return qss()
+def get_stylesheet(theme: str = "light", accent: str = None) -> str:
+    return qss(theme, accent)
 
 def _shortcut_icon_html(shortcut: dict, fallback_icon: str) -> str:
     """Build a shortcut icon img tag. Uses base64 for local files because QWebEngine blocks file:// in setHtml()."""
@@ -42,7 +42,7 @@ def _shortcut_icon_html(shortcut: dict, fallback_icon: str) -> str:
     return fallback_icon
 
 
-def get_home_page_html(shortcuts=None) -> str:
+def get_home_page_html(shortcuts=None, theme: str = "light") -> str:
     if shortcuts is None:
         shortcuts = []
 
@@ -115,7 +115,7 @@ def get_home_page_html(shortcuts=None) -> str:
     padding: 0;
 }}
 
-{css_vars()}
+{css_vars(theme=theme)}
 
 html, body {{
     width: 100%;

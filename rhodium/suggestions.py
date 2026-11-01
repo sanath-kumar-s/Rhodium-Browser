@@ -92,10 +92,16 @@ class SuggestionController:
     def __init__(self, database, bookmarks_provider=None):
         self._db = database
         self._bookmarks_provider = bookmarks_provider  # callable -> list of dicts
+        # Optional callables returning a bool; when provided and False the
+        # corresponding suggestion source is disabled (driven by settings).
+        self.address_enabled_provider = None
+        self.search_enabled_provider = None
 
     # ── Public API ───────────────────────────────────────────────────────────
     def get_address_suggestions(self, query: str, limit: int = 8):
         """Suggestions for the URL/address bar (URLs + recent searches)."""
+        if self.address_enabled_provider is not None and not self.address_enabled_provider():
+            return []
         q = (query or "").strip().lower()
         if len(q) < 2:
             return []
@@ -149,6 +155,8 @@ class SuggestionController:
 
     def get_search_suggestions(self, query: str, limit: int = 8):
         """Previous-search suggestions for the home-page search box."""
+        if self.search_enabled_provider is not None and not self.search_enabled_provider():
+            return []
         q = (query or "").strip().lower()
         if len(q) < 2:
             return []

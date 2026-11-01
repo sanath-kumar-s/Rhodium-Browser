@@ -33,12 +33,12 @@ class SettingsDialog(QDialog):
         form_layout.setSpacing(10)
 
         self.home_page_input = QLineEdit()
-        self.home_page_input.setText(self.parent_browser.settings.get("home_page", "about:home"))
+        self.home_page_input.setText(self.parent_browser.settings_service.get("general.homepage", "about:home"))
         form_layout.addRow("Home Page:", self.home_page_input)
 
         self.download_dir = QLineEdit()
-        self.download_dir.setText(self.parent_browser.settings.get(
-            "download_dir", str(Path.home() / "Downloads")))
+        self.download_dir.setText(self.parent_browser.settings_service.get(
+            "downloads.directory", str(Path.home() / "Downloads")))
         browse_btn = QPushButton("Browse…")
         browse_btn.clicked.connect(self.browse_download_dir)
         download_row = QHBoxLayout()
@@ -50,35 +50,36 @@ class SettingsDialog(QDialog):
         form_layout.addRow("Download Directory:", download_container)
 
         self.ask_save_check = QCheckBox("Ask where to save each download")
-        self.ask_save_check.setChecked(self.parent_browser.settings.get("ask_where_to_save", False))
+        self.ask_save_check.setChecked(self.parent_browser.settings_service.get("downloads.ask_where", False))
         form_layout.addRow("", self.ask_save_check)
 
         self.javascript_check = QCheckBox("Enable JavaScript")
-        self.javascript_check.setChecked(self.parent_browser.settings.get("javascript_enabled", True))
+        self.javascript_check.setChecked(self.parent_browser.settings_service.get("privacy.javascript_enabled", True))
         form_layout.addRow("", self.javascript_check)
 
         self.local_storage_check = QCheckBox("Enable Local Storage")
-        self.local_storage_check.setChecked(self.parent_browser.settings.get("local_storage_enabled", True))
+        self.local_storage_check.setChecked(self.parent_browser.settings_service.get("privacy.local_storage_enabled", True))
         form_layout.addRow("", self.local_storage_check)
 
         self.cookies_check = QCheckBox("Accept Cookies")
-        self.cookies_check.setChecked(self.parent_browser.settings.get("cookies_enabled", True))
+        self.cookies_check.setChecked(self.parent_browser.settings_service.get("privacy.cookies_enabled", True))
         form_layout.addRow("", self.cookies_check)
 
         self.cache_check = QCheckBox("Enable Cache")
-        self.cache_check.setChecked(self.parent_browser.settings.get("cache_enabled", True))
+        self.cache_check.setChecked(self.parent_browser.settings_service.get("privacy.cache_enabled", True))
         form_layout.addRow("", self.cache_check)
 
         self.zoom_spin = QSpinBox()
         self.zoom_spin.setMinimum(50)
         self.zoom_spin.setMaximum(200)
         self.zoom_spin.setSuffix("%")
-        self.zoom_spin.setValue(self.parent_browser.settings.get("default_zoom", 100))
+        self.zoom_spin.setValue(self.parent_browser.settings_service.get("general.zoom", 100))
         form_layout.addRow("Default Zoom:", self.zoom_spin)
 
         self.theme_combo = QComboBox()
+        theme = self.parent_browser.settings_service.get("general.theme", "light")
         self.theme_combo.addItems(["Light", "Dark"])
-        self.theme_combo.setCurrentText(self.parent_browser.settings.get("theme", "Light"))
+        self.theme_combo.setCurrentText("Light" if theme == "light" else "Dark")
         form_layout.addRow("Theme:", self.theme_combo)
 
         layout.addLayout(form_layout)
@@ -104,19 +105,16 @@ class SettingsDialog(QDialog):
             self.download_dir.setText(chosen)
 
     def save_settings(self):
-        settings = {
-            "home_page": self.home_page_input.text(),
-            "download_dir": self.download_dir.text(),
-            "ask_where_to_save": self.ask_save_check.isChecked(),
-            "javascript_enabled": self.javascript_check.isChecked(),
-            "local_storage_enabled": self.local_storage_check.isChecked(),
-            "cookies_enabled": self.cookies_check.isChecked(),
-            "cache_enabled": self.cache_check.isChecked(),
-            "default_zoom": self.zoom_spin.value(),
-            "theme": self.theme_combo.currentText()
-        }
-        self.parent_browser.settings = settings
-        self.parent_browser.save_settings()
+        svc = self.parent_browser.settings_service
+        svc.set("general.homepage", self.home_page_input.text() or "about:home")
+        svc.set("downloads.directory", self.download_dir.text() or str(Path.home() / "Downloads"))
+        svc.set("downloads.ask_where", self.ask_save_check.isChecked())
+        svc.set("privacy.javascript_enabled", self.javascript_check.isChecked())
+        svc.set("privacy.local_storage_enabled", self.local_storage_check.isChecked())
+        svc.set("privacy.cookies_enabled", self.cookies_check.isChecked())
+        svc.set("privacy.cache_enabled", self.cache_check.isChecked())
+        svc.set("general.zoom", self.zoom_spin.value())
+        svc.set("general.theme", "dark" if self.theme_combo.currentText() == "Dark" else "light")
         self.parent_browser.apply_global_settings()
         QMessageBox.information(self, "Saved", "Settings saved successfully!")
         self.accept()

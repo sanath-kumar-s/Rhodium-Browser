@@ -1,17 +1,34 @@
-import json
+"""Rhodium download manager.
+
+Central, self-contained download system built on QtWebEngine's
+``QWebEngineDownloadRequest``. All download state lives in Python and the
+manager is the single authority for initiation, progress, cancellation,
+retry and history persistence (SQLite).
+
+The profile's ``downloadRequested`` signal is connected exactly once for the
+whole application and dispatched to the live manager, so multiple browser
+windows never create duplicate handlers on the shared profile.
+"""
+
+import os
+import sqlite3
 import subprocess
 import sys
 import time
+import weakref
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal, QUrl
+from PyQt6.QtCore import QObject, QUrl, QTimer, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
-from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
+from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PyQt6.QtWebEngineCore import QWebEngineDownloadRequest
-from PyQt6.QtWidgets import QFileDialog, QApplication
+from PyQt6.QtWidgets import QApplication, QFileDialog
+
+from rhodium.profile_manager import get_web_profile
 
 
+# ── States ───────────────────────────────────────────────────────────────────
 class DownloadState:
     QUEUED = "QUEUED"
     DOWNLOADING = "DOWNLOADING"
@@ -22,8 +39,16 @@ class DownloadState:
     INTERRUPTED = "INTERRUPTED"
 
 
-TERMINAL_STATES = {DownloadState.COMPLETED, DownloadState.FAILED,
-                   DownloadState.CANCELLED, DownloadState.INTERRUPTED}
+TERMINAL_STATES = {
+    DownloadState.COMPLETED,
+    DownloadState.FAILED,
+    DownloadState.CANCELLED,
+    DownloadState.INTERRUPTED,
+}
+
+ACTIVE_STATES = {DownloadState.QUEUED, DownloadState.DOWNLOADING, DownloadState.PAUSED}
+
+RETRYABLE_STATES = {DownloadState.QUEUED} | TERMINAL_STATES
 
 EXECUTABLE_EXTS = {".exe", ".msi", ".msix", ".msp", ".bat", ".cmd",
                    ".ps1", ".scr", ".com", ".jar", ".vbs"}
@@ -68,6 +93,7 @@ NETWORK_ERROR_MESSAGES = {
 }
 
 
+# ── Formatting helpers ───────────────────────────────────────────────────────
 def format_bytes(value) -> str:
     try:
         value = float(value)
@@ -110,8 +136,12 @@ def format_eta(seconds) -> str:
     return f"{hours} hr {minutes % 60} min"
 
 
+def executable_ext(filename: str) -> bool:
+    return Path(filename or "").suffix.lower() in EXECUTABLE_EXTS
+
+
 def unique_path(directory: Path, filename: str) -> Path:
-    filename = filename.strip() or "download"
+    filename = (filename or "download").strip() or "download"
     filename = filename.replace("/", "_").replace("\\", "_")
     lower = filename.lower()
     if lower.endswith(MULTI_SUFFIXES):
@@ -127,11 +157,14 @@ def unique_path(directory: Path, filename: str) -> Path:
     return candidate
 
 
+# ── Item model ───────────────────────────────────────────────────────────────
 class DownloadItem(QObject):
+    """A single download (web engine or retry-network) tracked by the manager."""
+
     updated = pyqtSignal()
 
-    def __init__(self, manager: "DownloadManager", url: str, filename: str,
-                 save_path, item_id: int, mime_type: str = "", total_size: int = -1):
+    def __init__(self, manager, url="", filename="download", save_path="",
+                 item_id=0, mime_type="", total_size=-1, engine="webengine"):
         super().__init__(manager)
         self.manager = manager
         self.id = item_id
@@ -145,17 +178,17 @@ class DownloadItem(QObject):
         self.error_message = ""
         self.created_at = datetime.now().isoformat(timespec="seconds")
         self.completed_at = ""
-        self.executable = Path(filename).suffix.lower() in EXECUTABLE_EXTS
-        self.engine = "webengine"
+        self.executable = executable_ext(filename)
+        self.engine = engine
         self.request = None
         self.reply = None
         self._file = None
+        self._part = None
         self._speed = 0.0
         self._last_bytes = 0
         self._last_time = time.monotonic()
-        self._flushed = 0
-        self._resume_base = 0
 
+    # -- derived ------------------------------------------------------------
     @property
     def speed(self) -> float:
         return self._speed
@@ -177,7 +210,7 @@ class DownloadItem(QObject):
 
     @property
     def is_active(self) -> bool:
-        return self.state in (DownloadState.QUEUED, DownloadState.DOWNLOADING, DownloadState.PAUSED)
+        return self.state in ACTIVE_STATES
 
     def sample_speed(self):
         now = time.monotonic()
@@ -186,78 +219,131 @@ class DownloadItem(QObject):
             return
         delta = self.received_size - self._last_bytes
         instant = max(0.0, delta / elapsed)
-        self._speed = self._speed * 0.65 + instant * 0.35 if self._speed else instant
+        self._speed = (self._speed * 0.65 + instant * 0.35) if self._speed else instant
         self._last_bytes = self.received_size
         self._last_time = now
 
+    def can_pause(self) -> bool:
+        return (self.state == DownloadState.DOWNLOADING
+                and self.engine == "webengine" and self.request is not None)
+
+    def can_resume(self) -> bool:
+        return (self.state == DownloadState.PAUSED
+                and self.engine == "webengine" and self.request is not None)
+
+    def can_retry(self) -> bool:
+        return (self.state in RETRYABLE_STATES
+                and self.url.startswith(("http://", "https://")))
+
+    # -- serialization ------------------------------------------------------
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "filename": self.filename,
             "url": self.url,
-            "path": self.save_path,
+            "filename": self.filename,
+            "save_path": self.save_path,
             "mime_type": self.mime_type,
             "total_size": self.total_size,
-            "downloaded_size": self.received_size,
+            "received_size": self.received_size,
             "status": self.state,
             "created_at": self.created_at,
             "completed_at": self.completed_at,
-            "error": self.error_message,
+            "error_message": self.error_message,
             "executable": self.executable,
+            "engine": self.engine,
         }
 
-    @classmethod
-    def from_dict(cls, manager, data: dict) -> "DownloadItem":
-        item = cls(
-            manager,
-            data.get("url", ""),
-            data.get("filename", "download"),
-            data.get("path", ""),
-            int(data.get("id", 0)),
-            data.get("mime_type", ""),
-            data.get("total_size", -1),
-        )
-        item.received_size = data.get("downloaded_size", 0)
-        item.state = data.get("status", DownloadState.INTERRUPTED)
-        item.created_at = data.get("created_at", "")
-        item.completed_at = data.get("completed_at", "")
-        item.error_message = data.get("error", "")
-        item.executable = bool(data.get("executable")) or \
-            Path(item.filename).suffix.lower() in EXECUTABLE_EXTS
-        if item.state in (DownloadState.QUEUED, DownloadState.DOWNLOADING, DownloadState.PAUSED):
-            item.state = DownloadState.INTERRUPTED
-            item.error_message = INTERRUPT_MESSAGES["USER_SHUTDOWN"]
-        return item
+    def to_page_dict(self) -> dict:
+        data = self.to_dict()
+        data["can_pause"] = self.can_pause()
+        data["can_resume"] = self.can_resume()
+        data["can_retry"] = self.can_retry()
+        data["downloaded_size"] = self.received_size
+        data["speed"] = int(self.speed)
+        eta = self.eta
+        data["eta"] = int(eta) if eta >= 0 else -1
+        if data["error_message"] == "":
+            data.pop("error_message", None)
+        return data
 
 
+# ── Manager ──────────────────────────────────────────────────────────────────
 class DownloadManager(QObject):
     download_added = pyqtSignal(object)
     download_updated = pyqtSignal(object)
     download_removed = pyqtSignal(object)
     history_changed = pyqtSignal()
 
+    # One shared profile connection for the whole application.
+    _claimants = []
+    _profile_connected = False
+
     def __init__(self, browser):
         super().__init__(browser)
         self.browser = browser
+
         self.downloads = {}
         self.next_id = 1
         self.recently_completed_id = None
-        self.downloads_file = Path.home() / ".rhodium" / "downloads.json"
-        self.downloads_file.parent.mkdir(parents=True, exist_ok=True)
+
+        self._db_path = Path.home() / ".rhodium" / "downloads.db"
+        try:
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+
         self._nam = QNetworkAccessManager(self)
-        self._save_timer = QTimer(self)
-        self._save_timer.setSingleShot(True)
-        self._save_timer.setInterval(400)
-        self._save_timer.timeout.connect(self._save_now)
+        self._persist_timer = QTimer(self)
+        self._persist_timer.setSingleShot(True)
+        self._persist_timer.setInterval(400)
+        self._persist_timer.timeout.connect(self._persist_now)
         self._tick_timer = QTimer(self)
         self._tick_timer.setInterval(300)
         self._tick_timer.timeout.connect(self._tick)
         self._tick_timer.start()
+
+        type(self)._claimants.append(weakref.ref(self))
+        self._ensure_profile_connected()
         self._load()
 
-    def _default_dir(self) -> Path:
-        return Path(self.browser.settings.get(
-            "download_dir", str(Path.home() / "Downloads")))
+    # ------------------------------------------------------------------
+    # Profile wiring (connected exactly once)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _live_claimant(cls):
+        for ref in cls._claimants:
+            mgr = ref()
+            if mgr is not None:
+                return mgr
+        return None
+
+    def _ensure_profile_connected(self):
+        cls = type(self)
+        if cls._profile_connected:
+            return
+        try:
+            profile = get_web_profile()
+            profile.downloadRequested.connect(self._on_profile_download_requested)
+            cls._profile_connected = True
+        except Exception:
+            pass
+
+    def _on_profile_download_requested(self, request):
+        mgr = type(self)._live_claimant()
+        if mgr is not None:
+            mgr.on_download_requested(request)
+
+    # ------------------------------------------------------------------
+    # Lookup / convenience
+    # ------------------------------------------------------------------
+
+    def default_dir(self) -> Path:
+        try:
+            value = self.browser.settings_service.get("downloads.directory", str(Path.home() / "Downloads"))
+        except Exception:
+            value = str(Path.home() / "Downloads")
+        return Path(value)
 
     def get(self, download_id):
         return self.downloads.get(download_id)
@@ -276,29 +362,26 @@ class DownloadManager(QObject):
             return None
         return received * 100.0 / total
 
-    def on_download_requested(self, request: QWebEngineDownloadRequest):
+    def get_page_data_json(self) -> str:
+        import json
+        items = sorted(self.downloads.values(),
+                       key=lambda i: i.created_at, reverse=True)
+        return json.dumps([item.to_page_dict() for item in items])
+
+    # ------------------------------------------------------------------
+    # Initiation (web engine)
+    # ------------------------------------------------------------------
+
+    def on_download_requested(self, request):
+        if not isinstance(request, QWebEngineDownloadRequest):
+            return
         if request.state() != QWebEngineDownloadRequest.DownloadState.DownloadRequested:
             return
 
-        if self.browser.settings.get("ask_where_to_save"):
-            start_dir = self._default_dir() / (request.suggestedFileName() or "download")
-            chosen, _ = QFileDialog.getSaveFileName(
-                self.browser, "Save File", str(start_dir))
-            if not chosen:
-                request.cancel()
-                return
-            target = Path(chosen)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            self.browser.settings["download_dir"] = str(target.parent)
-            self.browser.save_settings()
-            target = unique_path(target.parent, target.name)
-        else:
-            directory = self._default_dir()
-            try:
-                directory.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass
-            target = unique_path(directory, request.suggestedFileName() or "download")
+        target = self._resolve_target(request.suggestedFileName() or "download")
+        if target is None:
+            request.cancel()
+            return
 
         request.setDownloadDirectory(str(target.parent))
         request.setDownloadFileName(target.name)
@@ -306,17 +389,16 @@ class DownloadManager(QObject):
 
         item = DownloadItem(
             self,
-            request.url().toString(),
-            request.downloadFileName(),
-            Path(request.downloadDirectory()) / request.downloadFileName(),
-            self.next_id,
-            request.mimeType(),
-            request.totalBytes(),
+            url=request.url().toString(),
+            filename=request.downloadFileName(),
+            save_path=str(target),
+            item_id=self._allocate_id(),
+            mime_type=request.mimeType(),
+            total_size=request.totalBytes(),
+            engine="webengine",
         )
-        self.next_id += 1
         item.request = request
-        item.engine = "webengine"
-        self.downloads[item.id] = item
+        self._register(item)
 
         request.receivedBytesChanged.connect(lambda it=item: self._sync_progress(it))
         request.totalBytesChanged.connect(lambda it=item: self._sync_total(it))
@@ -325,16 +407,60 @@ class DownloadManager(QObject):
         self.download_added.emit(item)
         self.download_updated.emit(item)
         self.history_changed.emit()
-        self._schedule_save()
+        self._schedule_persist()
 
-    def _sync_progress(self, item: DownloadItem):
+    def _resolve_target(self, suggested):
+        try:
+            ask = bool(self.browser.settings_service.get("downloads.ask_where", False))
+        except Exception:
+            ask = False
+        directory = self.default_dir()
+
+        if ask:
+            start = directory / suggested
+            chosen, _ = QFileDialog.getSaveFileName(self.browser, "Save File", str(start))
+            if not chosen:
+                return None
+            chosen_path = Path(chosen)
+            if not chosen_path.suffix and Path(suggested).suffix:
+                chosen_path = chosen_path.with_suffix(Path(suggested).suffix)
+            try:
+                chosen_path.parent.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            try:
+                self.browser.settings_service.set("downloads.directory", str(chosen_path.parent))
+            except Exception:
+                pass
+            return unique_path(chosen_path.parent, chosen_path.name)
+
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        return unique_path(directory, suggested)
+
+    # ------------------------------------------------------------------
+    # Web engine signal sync
+    # ------------------------------------------------------------------
+
+    def _allocate_id(self):
+        item_id = self.next_id
+        self.next_id += 1
+        return item_id
+
+    def _register(self, item):
+        self.downloads[item.id] = item
+
+    def _sync_progress(self, item):
         if item.request is None:
             return
         item.received_size = item.request.receivedBytes()
+        item.sample_speed()
         item.updated.emit()
         self.download_updated.emit(item)
 
-    def _sync_total(self, item: DownloadItem):
+    def _sync_total(self, item):
         if item.request is None:
             return
         total = item.request.totalBytes()
@@ -343,52 +469,55 @@ class DownloadManager(QObject):
         item.updated.emit()
         self.download_updated.emit(item)
 
-    def _on_webengine_state(self, item: DownloadItem, state):
-        item.sample_speed()
+    def _on_webengine_state(self, item, state):
+        if item.request is None:
+            return
         if state == QWebEngineDownloadRequest.DownloadState.DownloadInProgress:
             item.state = DownloadState.PAUSED if item.request.isPaused() else DownloadState.DOWNLOADING
         elif state == QWebEngineDownloadRequest.DownloadState.DownloadCompleted:
-            self._finish_item(item, DownloadState.COMPLETED)
+            self._finish(item, DownloadState.COMPLETED)
         elif state == QWebEngineDownloadRequest.DownloadState.DownloadCancelled:
-            self._finish_item(item, DownloadState.CANCELLED, cleanup=True)
+            self._finish(item, DownloadState.CANCELLED, cleanup=True)
         elif state == QWebEngineDownloadRequest.DownloadState.DownloadInterrupted:
             reason = item.request.interruptReason()
             reason_name = getattr(reason, "name", "") or ""
             if reason_name == "USER_CANCELED":
-                self._finish_item(item, DownloadState.CANCELLED, cleanup=True)
+                self._finish(item, DownloadState.CANCELLED, cleanup=True)
             else:
                 item.error_message = INTERRUPT_MESSAGES.get(
                     reason_name, item.request.interruptReasonString())
-                self._finish_item(item, DownloadState.INTERRUPTED, cleanup=True)
+                self._finish(item, DownloadState.INTERRUPTED, cleanup=True)
         item.updated.emit()
         self.download_updated.emit(item)
-        self._schedule_save()
+        self._schedule_persist()
 
-    def _finish_item(self, item: DownloadItem, state: str, cleanup: bool = False):
+    def _finish(self, item, state, cleanup=False):
         item.state = state
+        item.completed_at = datetime.now().isoformat(timespec="seconds")
         if state == DownloadState.COMPLETED:
             if item.total_size > 0:
                 item.received_size = item.total_size
-            item.completed_at = datetime.now().isoformat(timespec="seconds")
             item.error_message = ""
             self.recently_completed_id = item.id
-        else:
-            item.completed_at = datetime.now().isoformat(timespec="seconds")
-            if cleanup:
-                self._delete_partial(item)
+        elif cleanup:
+            self._delete_partial(item)
         item.request = None
         item.reply = None
-        if state != DownloadState.COMPLETED and item.received_size <= 0:
-            item.received_size = 0
+        item._file = None
+        item._part = None
         self.history_changed.emit()
 
-    def _delete_partial(self, item: DownloadItem):
+    def _delete_partial(self, item):
         try:
             path = Path(item.save_path)
             if path.exists() and item.state != DownloadState.COMPLETED:
                 path.unlink()
         except OSError:
             pass
+
+    # ------------------------------------------------------------------
+    # Periodic tick (speed sample refresh)
+    # ------------------------------------------------------------------
 
     def _tick(self):
         for item in list(self.downloads.values()):
@@ -397,36 +526,32 @@ class DownloadManager(QObject):
                 item.updated.emit()
                 self.download_updated.emit(item)
 
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
+
     def pause(self, download_id):
         item = self.downloads.get(download_id)
-        if item is None or not item.is_active:
+        if item is None or not item.can_pause():
             return
-        if item.engine == "webengine" and item.request is not None:
+        try:
             item.request.pause()
-            item.state = DownloadState.PAUSED
-        elif item.engine == "qtnetwork" and item.reply is not None:
-            try:
-                item.reply.abort()
-            except RuntimeError:
-                pass
-            self._close_file(item)
-            item.state = DownloadState.PAUSED
+        except RuntimeError:
+            return
+        item.state = DownloadState.PAUSED
         item.updated.emit()
         self.download_updated.emit(item)
-        self._schedule_save()
+        self._schedule_persist()
 
     def resume(self, download_id):
         item = self.downloads.get(download_id)
-        if item is None:
+        if item is None or not item.can_resume():
             return
-        if item.state != DownloadState.PAUSED:
+        try:
+            item.request.resume()
+        except RuntimeError:
             return
-        if item.engine == "webengine":
-            if item.request is not None:
-                item.request.resume()
-                item.state = DownloadState.DOWNLOADING
-        else:
-            self._start_network_download(item, resume_from=item.received_size)
+        item.state = DownloadState.DOWNLOADING
         item.updated.emit()
         self.download_updated.emit(item)
 
@@ -435,38 +560,27 @@ class DownloadManager(QObject):
         if item is None or not item.is_active:
             return
         if item.engine == "webengine" and item.request is not None:
-            item.state = DownloadState.CANCELLED
-            item.request.cancel()
-        elif item.engine == "qtnetwork":
-            item.state = DownloadState.CANCELLED
-            if item.reply is not None:
-                try:
-                    item.reply.abort()
-                except RuntimeError:
-                    pass
-            self._close_file(item)
-            self._delete_partial(item)
-            item.completed_at = datetime.now().isoformat(timespec="seconds")
-            item.reply = None
+            try:
+                item.request.cancel()
+            except RuntimeError:
+                pass
+        elif item.engine == "network":
+            self._abort_network(item, target_state=DownloadState.CANCELLED)
+        else:
+            self._finish(item, DownloadState.CANCELLED)
         item.updated.emit()
         self.download_updated.emit(item)
-        self._schedule_save()
+        self._schedule_persist()
 
     def retry(self, download_id):
         item = self.downloads.get(download_id)
-        retryable = (DownloadState.QUEUED, *TERMINAL_STATES)
-        if item is None or item.state not in retryable or \
-                not item.url.startswith(("http://", "https://")):
+        if item is None or not item.can_retry():
             return
-        path = Path(item.save_path)
+        target = Path(item.save_path)
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            if path.exists():
-                path.unlink()
-        except OSError as e:
-            item.error_message = f"Cannot prepare download location: {e}"
-            item.updated.emit()
-            return
+            target.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
         item.state = DownloadState.QUEUED
         item.error_message = ""
         item.completed_at = ""
@@ -476,109 +590,9 @@ class DownloadManager(QObject):
         item._last_time = time.monotonic()
         item.updated.emit()
         self.download_updated.emit(item)
-        self._start_network_download(item, resume_from=0)
+        self._start_network_download(item)
 
-    def _start_network_download(self, item: DownloadItem, resume_from: int = 0):
-        request = QNetworkRequest(QUrl(item.url))
-        request.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute,
-                             QNetworkRequest.RedirectPolicy.NoLessSafeRedirectPolicy)
-        request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader,
-                          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Rhodium")
-        if resume_from > 0:
-            request.setRawHeader(b"Range", f"bytes={resume_from}-".encode())
-
-        reply = self._nam.get(request)
-        item.reply = reply
-        item.engine = "qtnetwork"
-        item.state = DownloadState.DOWNLOADING
-        item._flushed = 0
-        item._resume_base = resume_from
-
-        try:
-            mode = "ab" if resume_from > 0 else "wb"
-            item._file = open(item.save_path, mode)
-        except OSError as e:
-            item.state = DownloadState.FAILED
-            item.error_message = f"Cannot write file: {e}"
-            item.completed_at = datetime.now().isoformat(timespec="seconds")
-            reply.deleteLater()
-            item.reply = None
-            item.updated.emit()
-            self.download_updated.emit(item)
-            self._schedule_save()
-            return
-
-        reply.readyRead.connect(lambda it=item: self._drain_reply(it))
-
-        def on_progress(received, total, it=item):
-            it.total_size = (it._resume_base + total) if total >= 0 else it.total_size
-            it.received_size = it._resume_base + received
-            it.updated.emit()
-
-        reply.downloadProgress.connect(on_progress)
-
-        def on_finished(it=item):
-            self._on_network_finished(it)
-
-        reply.finished.connect(on_finished)
-
-    def _drain_reply(self, item: DownloadItem):
-        reply = item.reply
-        if reply is None or item._file is None:
-            return
-        data = bytes(reply.readAll())
-        if not data:
-            return
-        try:
-            item._file.write(data)
-            item._flushed += len(data)
-            item.received_size = item._resume_base + item._flushed
-        except OSError as e:
-            item.error_message = f"Cannot write file: {e}"
-            self._on_network_finished(item, forced_error=True)
-
-    def _on_network_finished(self, item: DownloadItem, forced_error: bool = False):
-        reply = item.reply
-        if reply is None:
-            return
-        error = reply.error()
-        error_name = getattr(error, "name", "") or ""
-        self._close_file(item)
-        reply.deleteLater()
-        item.reply = None
-
-        if item.state == DownloadState.PAUSED or item.state == DownloadState.CANCELLED:
-            self._schedule_save()
-            return
-
-        if forced_error:
-            item.state = DownloadState.FAILED
-        elif error == QNetworkReply.NetworkError.NoError:
-            item.state = DownloadState.COMPLETED
-            if item.total_size > 0:
-                item.received_size = item.total_size
-            item.completed_at = datetime.now().isoformat(timespec="seconds")
-            self.recently_completed_id = item.id
-        elif error_name == "OperationCanceledError":
-            item.state = DownloadState.CANCELLED
-        else:
-            item.state = DownloadState.FAILED
-            item.error_message = NETWORK_ERROR_MESSAGES.get(error_name, reply.errorString())
-
-        item.updated.emit()
-        self.download_updated.emit(item)
-        self.history_changed.emit()
-        self._schedule_save()
-
-    def _close_file(self, item: DownloadItem):
-        if item._file is not None:
-            try:
-                item._file.close()
-            except OSError:
-                pass
-            item._file = None
-
-    def remove(self, download_id, delete_file: bool = False):
+    def remove(self, download_id, delete_file=False):
         item = self.downloads.get(download_id)
         if item is None:
             return
@@ -594,16 +608,20 @@ class DownloadManager(QObject):
         self.downloads.pop(download_id, None)
         self.download_removed.emit(item)
         self.history_changed.emit()
-        self._schedule_save()
+        self._schedule_persist()
 
     def clear_history(self):
-        stale = [i for i in list(self.downloads.values()) if not i.is_active]
+        stale = [item for item in list(self.downloads.values()) if not item.is_active]
         for item in stale:
             self.downloads.pop(item.id, None)
             self.download_removed.emit(item)
         if stale:
             self.history_changed.emit()
-            self._schedule_save()
+            self._schedule_persist()
+
+    # ------------------------------------------------------------------
+    # File actions
+    # ------------------------------------------------------------------
 
     def open_file(self, download_id):
         item = self.downloads.get(download_id)
@@ -611,7 +629,7 @@ class DownloadManager(QObject):
             return
         path = Path(item.save_path)
         if not path.exists():
-            self.browser.status_label.setText("File no longer exists on disk.")
+            self._status("File no longer exists on disk.")
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
@@ -620,7 +638,10 @@ class DownloadManager(QObject):
         if item is None or item.state != DownloadState.COMPLETED:
             return
         if sys.platform == "win32":
-            subprocess.Popen(["rundll32", "shell32.dll,OpenAs_RunDLLW", item.save_path])
+            try:
+                subprocess.Popen(["rundll32", "shell32.dll,OpenAs_RunDLLW", item.save_path])
+            except OSError:
+                pass
 
     def show_in_folder(self, download_id):
         item = self.downloads.get(download_id)
@@ -628,15 +649,18 @@ class DownloadManager(QObject):
             return
         path = Path(item.save_path)
         if not path.exists():
-            self.browser.status_label.setText("File no longer exists on disk.")
+            self._status("File no longer exists on disk.")
             return
         if sys.platform == "win32":
-            subprocess.Popen(["explorer", "/select,", str(path)])
+            try:
+                subprocess.Popen(["explorer", "/select,", str(path)])
+            except OSError:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
         else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
 
     def open_download_folder(self):
-        directory = self._default_dir()
+        directory = self.default_dir()
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -647,56 +671,235 @@ class DownloadManager(QObject):
         item = self.downloads.get(download_id)
         if item is not None:
             QApplication.clipboard().setText(item.url)
-            self.browser.status_label.setText("Download link copied.")
+            self._status("Download link copied.")
 
     def copy_path(self, download_id):
         item = self.downloads.get(download_id)
         if item is not None:
             QApplication.clipboard().setText(item.save_path)
-            self.browser.status_label.setText("File path copied.")
+            self._status("File path copied.")
 
-    def get_page_data_json(self) -> str:
-        items = sorted(self.downloads.values(),
-                       key=lambda i: i.created_at, reverse=True)
-        data = []
-        for item in items:
-            data.append({
-                "id": item.id,
-                "filename": item.filename,
-                "url": item.url,
-                "path": item.save_path,
-                "mime_type": item.mime_type,
-                "total_size": item.total_size,
-                "downloaded_size": item.received_size,
-                "status": item.state,
-                "created_at": item.created_at,
-                "completed_at": item.completed_at,
-                "error_message": item.error_message,
-                "executable": item.executable,
-            })
-        return json.dumps(data)
-
-    def _schedule_save(self):
-        self._save_timer.start()
-
-    def _save_now(self):
+    def _status(self, text):
         try:
-            data = [item.to_dict() for item in self.downloads.values()]
-            self.downloads_file.write_text(
-                json.dumps(data, indent=2), encoding="utf-8")
+            self.browser.status_label.setText(text)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Retry network download
+    # ------------------------------------------------------------------
+
+    def _start_network_download(self, item):
+        request = QNetworkRequest(QUrl(item.url))
+        request.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute,
+                             QNetworkRequest.RedirectPolicy.NoLessSafeRedirectPolicy)
+        request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader,
+                          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Rhodium")
+
+        reply = self._nam.get(request)
+        item.reply = reply
+        item.engine = "network"
+        item.state = DownloadState.DOWNLOADING
+        item.error_message = ""
+
+        part = Path(item.save_path + ".part")
+        try:
+            part.parent.mkdir(parents=True, exist_ok=True)
+            fh = open(part, "wb")
+        except OSError as e:
+            item.state = DownloadState.FAILED
+            item.error_message = f"Cannot write file: {e}"
+            item.completed_at = datetime.now().isoformat(timespec="seconds")
+            reply.deleteLater()
+            item.reply = None
+            item.updated.emit()
+            self.download_updated.emit(item)
+            self._schedule_persist()
+            return
+
+        item._file = fh
+        item._part = part
+        item._last_bytes = 0
+        item._last_time = time.monotonic()
+
+        def on_progress(received, total, it=item):
+            if total >= 0:
+                it.total_size = total
+            it.received_size = received
+            it.updated.emit()
+
+        reply.downloadProgress.connect(on_progress)
+
+        def on_ready_read(it=item):
+            reply_r = it.reply
+            if reply_r is None or it._file is None:
+                return
+            data = bytes(reply_r.readAll())
+            if data:
+                try:
+                    it._file.write(data)
+                except OSError as e:
+                    it.error_message = f"Cannot write file: {e}"
+                    self._abort_network(it, target_state=DownloadState.FAILED)
+
+        reply.readyRead.connect(on_ready_read)
+        reply.finished.connect(lambda it=item: self._on_network_finished(it))
+
+    def _abort_network(self, item, target_state):
+        if item.reply is not None:
+            try:
+                item.reply.abort()
+            except RuntimeError:
+                pass
+        self._close_network_file(item, delete_part=True)
+        item.reply = None
+        item._part = None
+        item.state = target_state
+        item.completed_at = datetime.now().isoformat(timespec="seconds")
+        item.updated.emit()
+        self.download_updated.emit(item)
+        self.history_changed.emit()
+        self._schedule_persist()
+
+    def _close_network_file(self, item, delete_part=False):
+        if item._file is not None:
+            try:
+                item._file.close()
+            except OSError:
+                pass
+            item._file = None
+        if delete_part and item._part is not None:
+            try:
+                part = Path(item._part)
+                if part.exists():
+                    part.unlink()
+            except OSError:
+                pass
+
+    def _on_network_finished(self, item):
+        reply = item.reply
+        if reply is None:
+            return
+        error = reply.error()
+        error_name = getattr(error, "name", "") or ""
+        self._close_network_file(item)
+        reply.deleteLater()
+        item.reply = None
+
+        if item.state in (DownloadState.PAUSED, DownloadState.CANCELLED, DownloadState.FAILED):
+            self._schedule_persist()
+            return
+
+        if error == QNetworkReply.NetworkError.NoError:
+            part = Path(item.save_path + ".part")
+            try:
+                target = Path(item.save_path)
+                if target.exists():
+                    target.unlink()
+                os.replace(str(part), str(target))
+            except OSError as e:
+                item.state = DownloadState.FAILED
+                item.error_message = f"Cannot finalize file: {e}"
+            else:
+                item.state = DownloadState.COMPLETED
+                if item.total_size > 0:
+                    item.received_size = item.total_size
+                item.completed_at = datetime.now().isoformat(timespec="seconds")
+                self.recently_completed_id = item.id
+        elif error_name == "OperationCanceledError":
+            item.state = DownloadState.CANCELLED
+        else:
+            item.state = DownloadState.FAILED
+            item.error_message = NETWORK_ERROR_MESSAGES.get(error_name, reply.errorString())
+
+        item._part = None
+        item.updated.emit()
+        self.download_updated.emit(item)
+        self.history_changed.emit()
+        self._schedule_persist()
+
+    # ------------------------------------------------------------------
+    # Persistence (SQLite)
+    # ------------------------------------------------------------------
+
+    def _schedule_persist(self):
+        self._persist_timer.start()
+
+    def _connect_db(self):
+        return sqlite3.connect(str(self._db_path))
+
+    def _persist_now(self):
+        try:
+            conn = self._connect_db()
+            with conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS downloads (
+                        id INTEGER PRIMARY KEY,
+                        url TEXT,
+                        filename TEXT,
+                        save_path TEXT,
+                        mime_type TEXT,
+                        total_size INTEGER DEFAULT -1,
+                        received_size INTEGER DEFAULT 0,
+                        status TEXT,
+                        error TEXT DEFAULT '',
+                        created_at TEXT,
+                        completed_at TEXT DEFAULT '',
+                        executable INTEGER DEFAULT 0
+                    )
+                """)
+                conn.execute("DELETE FROM downloads")
+                rows = [
+                    (item.id, item.url, item.filename, item.save_path,
+                     item.mime_type, item.total_size, item.received_size,
+                     item.state, item.error_message, item.created_at,
+                     item.completed_at, int(item.executable))
+                    for item in self.downloads.values()
+                ]
+                conn.executemany("""
+                    INSERT INTO downloads
+                        (id, url, filename, save_path, mime_type, total_size,
+                         received_size, status, error, created_at, completed_at, executable)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, rows)
+            conn.close()
         except Exception as e:
             print("Could not save download history:", e)
 
     def _load(self):
         try:
-            if self.downloads_file.exists():
-                data = json.loads(self.downloads_file.read_text(encoding="utf-8"))
-                for entry in data:
-                    try:
-                        item = DownloadItem.from_dict(self, entry)
-                    except Exception:
-                        continue
+            conn = self._connect_db()
+            found = False
+            with conn:
+                cursor = conn.execute("SELECT * FROM downloads")
+                for row in cursor.fetchall():
+                    found = True
+                    (item_id, url, filename, save_path, mime_type, total_size,
+                     received_size, status, error, created_at, completed_at,
+                     executable) = row
+                    item = DownloadItem(
+                        self,
+                        url=str(url or ""),
+                        filename=str(filename or "download"),
+                        save_path=str(save_path or ""),
+                        item_id=int(item_id),
+                        mime_type=str(mime_type or ""),
+                        total_size=int(total_size if total_size is not None else -1),
+                    )
+                    item.received_size = int(received_size or 0)
+                    item.created_at = str(created_at or "")
+                    item.completed_at = str(completed_at or "")
+                    item.error_message = str(error or "")
+                    item.executable = bool(executable) or executable_ext(filename)
+                    if status in ACTIVE_STATES:
+                        item.state = DownloadState.INTERRUPTED
+                        item.error_message = INTERRUPT_MESSAGES["USER_SHUTDOWN"]
+                    else:
+                        item.state = str(status or DownloadState.INTERRUPTED)
                     self.downloads[item.id] = item
                     self.next_id = max(self.next_id, item.id + 1)
+            conn.close()
+            if found:
+                self.history_changed.emit()
         except Exception as e:
             print("Could not load download history:", e)
