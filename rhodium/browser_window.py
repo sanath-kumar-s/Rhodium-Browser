@@ -823,7 +823,7 @@ class AdvancedBrowser(QMainWindow):
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
         elif url.split("?")[0] == "rhodium://settings":
-            self.show_settings_in_view(view)
+            self.show_settings_in_view(view, url)
         else:
             self._load_in_view(url, view)
 
@@ -1046,7 +1046,7 @@ class AdvancedBrowser(QMainWindow):
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
         elif url.split("?")[0] == "rhodium://settings":
-            self.show_settings_in_view(view)
+            self.show_settings_in_view(view, url)
         else:
             self._load_in_view(url, view)
 
@@ -1065,7 +1065,7 @@ class AdvancedBrowser(QMainWindow):
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
         elif url.split("?")[0] == "rhodium://settings":
-            self.show_settings_in_view(view)
+            self.show_settings_in_view(view, url)
         else:
             self._load_in_view(url, view)
 
@@ -1867,13 +1867,13 @@ class AdvancedBrowser(QMainWindow):
         self.refresh_settings_tabs()
 
     # ── Settings page rendering ─────────────────────────────────────────────
-    def show_settings_in_view(self, view):
+    def show_settings_in_view(self, view, url_string=None):
         cat = "general"
         try:
-            url_str = view.url().toString()
-            if "?" in url_str:
+            src = url_string or view.url().toString()
+            if "?" in src:
                 from urllib.parse import parse_qs
-                qs = parse_qs(url_str.split("?", 1)[1])
+                qs = parse_qs(src.split("?", 1)[1])
                 if "cat" in qs:
                     cat = qs["cat"][0]
         except Exception:
