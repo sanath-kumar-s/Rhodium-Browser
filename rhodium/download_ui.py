@@ -664,11 +664,11 @@ class DownloadToolbarButton(QToolButton):
             margin = 3.0
             rect = QRectF(margin, margin,
                           self.width() - 2 * margin, self.height() - 2 * margin)
-            pen = QPen(QColor("#2b323d"), 2.5)
+            pen = QPen(QColor("#D8DBE4"), 2.5)
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(pen)
             painter.drawArc(rect, 90 * 16, -360 * 16)
-            pen.setColor(QColor("#4c8dff"))
+            pen.setColor(QColor("#6D4FD8"))
             painter.setPen(pen)
             painter.drawArc(rect, 90 * 16, -int(self._progress * 3.6) * 16)
             painter.end()
@@ -676,7 +676,7 @@ class DownloadToolbarButton(QToolButton):
                 not self.manager.active_count():
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setBrush(QColor("#3dd68c"))
+            painter.setBrush(QColor("#2FA66C"))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(QRect(self.width() - 12, 3, 7, 7))
             painter.end()

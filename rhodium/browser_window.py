@@ -1682,7 +1682,7 @@ class AdvancedBrowser(QMainWindow):
             "cookies_enabled": True,
             "cache_enabled": True,
             "default_zoom": 100,
-            "theme": "Dark"
+            "theme": "Light"
         }
 
     def save_settings(self):

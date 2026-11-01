@@ -27,6 +27,8 @@ class ResizeMoveFilter(QObject):
 
     def _can_drag_window(self, global_pos):
         """Return True only when the user clicked empty browser chrome."""
+        if getattr(self.win, '_fullscreen_mode', False):
+            return False
 
         local_pos = self.win.mapFromGlobal(global_pos)
 
@@ -178,6 +180,8 @@ class ResizeMoveFilter(QObject):
     # =============================================================
 
     def _get_edges(self, global_pos, win_rect):
+        if getattr(self.win, '_fullscreen_mode', False):
+            return []
 
         edges = []
 

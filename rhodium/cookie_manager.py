@@ -13,7 +13,7 @@ Key Points:
 import logging
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, pyqtSignal, QUrl
+from PyQt6.QtCore import QObject, Qt, pyqtSignal, QUrl
 from PyQt6.QtWebEngineCore import QWebEngineProfile
 from rhodium.profile_manager import get_web_profile
 
@@ -352,34 +352,70 @@ class CookieManager(QObject):
             logger.error(f"Error deleting all cookies: {e}")
             return False
 
-    def set_test_cookie(self, name: str, value: str, domain: str = "", path: str = "/", secure: bool = False, httponly: bool = False) -> bool:
-        """Create a test cookie via the live QWebEngineCookieStore.
-
-        Uses ``setCookie`` so the cookie flows through Chromium and is
-        subject to normal domain/path rules.  The origin URL is derived
-        from the domain when possible.
-        """
+    def set_test_cookie(
+        self,
+        name: str,
+        value: str,
+        domain: str = "",
+        path: str = "/",
+        secure: bool = False,
+        httponly: bool = False,
+        expiration=None
+    ) -> bool:
         try:
             from PyQt6.QtNetwork import QNetworkCookie
-            from PyQt6.QtCore import QUrl
+            from PyQt6.QtCore import QDateTime
+
             cookie = QNetworkCookie()
-            # QNetworkCookie name/value are QByteArray
-            cookie.setName(name.encode() if isinstance(name, str) else name)
-            cookie.setValue(value.encode() if isinstance(value, str) else value)
+            cookie.setName(name.encode())
+            cookie.setValue(value.encode())
+
             if domain:
                 cookie.setDomain(domain)
-            if path:
-                cookie.setPath(path)
+
+            cookie.setPath(path)
             cookie.setSecure(secure)
             cookie.setHttpOnly(httponly)
-            # Session cookies have no expiration; setting an expiration makes it persistent
-            # Leave expiration empty for session-style test (we want to show difference).
-            origin = QUrl(f"https://{domain}" if domain else "https://example.com")
+
+            # Persistent cookie
+            if expiration:
+                if isinstance(expiration, QDateTime):
+                    cookie.setExpirationDate(expiration)
+                else:
+                    expiry = QDateTime.fromString(
+                        str(expiration),
+                        Qt.DateFormat.ISODate
+                    )
+
+                    if expiry.isValid():
+                        cookie.setExpirationDate(expiry)
+                    else:
+                        logger.error(
+                            f"Invalid cookie expiration: {expiration}"
+                        )
+                        return False
+
+            origin = QUrl(
+                f"https://{domain}"
+                if domain
+                else "https://example.com"
+            )
+
             self.cookie_store.setCookie(cookie, origin)
-            logger.info(f"Set test cookie: {name} domain={domain} path={path}")
+
+            logger.info(
+                f"Set test cookie: {name} "
+                f"domain={domain} "
+                f"persistent={not cookie.isSessionCookie()} "
+                f"expiration={cookie.expirationDate().toString()}"
+            )
+
             return True
+
         except Exception as e:
-            logger.error(f"Failed to set test cookie {name}: {e}")
+            logger.error(
+                f"Failed to set test cookie {name}: {e}"
+            )
             return False
 
     def get_cookie_count_async(self, callback):

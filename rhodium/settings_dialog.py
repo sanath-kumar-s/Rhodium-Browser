@@ -18,7 +18,7 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(480)
         self.setWindowIcon(icon("settings.png"))
         self.init_ui()
-        self.set_title_bar_color("#1e1e2e")
+        self.set_title_bar_color("#f5f6f8")
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -77,8 +77,8 @@ class SettingsDialog(QDialog):
         form_layout.addRow("Default Zoom:", self.zoom_spin)
 
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Dark", "Light"])
-        self.theme_combo.setCurrentText(self.parent_browser.settings.get("theme", "Dark"))
+        self.theme_combo.addItems(["Light", "Dark"])
+        self.theme_combo.setCurrentText(self.parent_browser.settings.get("theme", "Light"))
         form_layout.addRow("Theme:", self.theme_combo)
 
         layout.addLayout(form_layout)
@@ -130,7 +130,7 @@ class SettingsDialog(QDialog):
         self.cookies_check.setChecked(True)
         self.cache_check.setChecked(True)
         self.zoom_spin.setValue(100)
-        self.theme_combo.setCurrentText("Dark")
+        self.theme_combo.setCurrentText("Light")
 
     def set_title_bar_color(self, hex_color: str):
         # Convert hex string to COLORREF (BGR format)

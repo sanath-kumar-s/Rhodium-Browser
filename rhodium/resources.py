@@ -4,675 +4,10 @@ import urllib.parse
 import os
 from urllib.parse import urlparse
 
+from rhodium.theme import qss, css_vars, token
+
 def get_stylesheet() -> str:
-    return """
-        /* =========================================================
-        RHODIUM — PROFESSIONAL PREMIUM DARK BROWSER UI
-        ========================================================= */
-
-        * {
-            font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-            font-size: 12px;
-        }
-
-        QMainWindow {
-            background: #0B0D10;
-            color: #E8ECF2;
-        }
-
-        QWidget#BrowserRoot {
-            background: #0B0D10;
-            border: 1px solid #252B34;
-        }
-
-        QWidget#BrowserSurface {
-            background: #0B0D10;
-        }
-
-
-        /* =========================================================
-        NAVIGATION BAR
-        ========================================================= */
-
-        QToolBar#NavBar {
-            background: #12151A;
-            border: none;
-            border-bottom: 1px solid #252B34;
-            padding: 4px 6px;
-            spacing: 2px;
-            min-height: 42px;
-            max-height: 42px;
-        }
-
-
-        /* =========================================================
-        NAVIGATION BUTTONS
-        ========================================================= */
-
-        QPushButton#NavBtn {
-            background: transparent;
-            border: none;
-            border-radius: 6px;
-            color: #9AA3B2;
-            padding: 6px;
-            min-width: 32px;
-            min-height: 32px;
-            max-width: 32px;
-            max-height: 32px;
-        }
-
-        QPushButton#NavBtn:hover {
-            background: #171C23;
-            color: #E8ECF2;
-        }
-
-        QPushButton#NavBtn:pressed {
-            background: #1B2028;
-            color: #ffffff;
-        }
-
-        QPushButton#NavBtn:disabled {
-            color: #687282;
-        }
-
-
-        /* =========================================================
-        URL BAR
-        ========================================================= */
-
-        QLineEdit#UrlBar {
-            background: #101318;
-            color: #E8ECF2;
-            border: 1px solid #252B34;
-            border-radius: 9px;
-            padding: 4px 10px;
-            font-size: 13px;
-            selection-background-color: #6EA8FF;
-            selection-color: #0B0D10;
-        }
-
-        QLineEdit#UrlBar:hover {
-            background: #171C23;
-            border-color: #303846;
-        }
-
-        QLineEdit#UrlBar:focus {
-            background: #171C23;
-            border: 1px solid #6EA8FF;
-            selection-background-color: #6EA8FF;
-        }
-
-
-        /* =========================================================
-        BROWSER TABS
-        ========================================================= */
-
-        QWidget#BrowserTabs {
-            background: #0E1115;
-            border: none;
-        }
-
-        QWidget#TabStrip {
-            background: #0E1115;
-            border-bottom: 1px solid #252B34;
-        }
-
-        QTabBar#RhodiumTabBar {
-            background: transparent;
-            border: none;
-            qproperty-drawBase: 0;
-            min-height: 36px;
-            max-height: 36px;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        QTabBar#RhodiumTabBar::tab {
-            background: transparent;
-            color: #9AA3B2;
-            border: none;
-            border-top-left-radius: 8px;
-            border-top-right-radius: 8px;
-            border-bottom-left-radius: 8px;
-            border-bottom-right-radius: 8px;
-            padding: 0 8px;
-            margin-top: 3px;
-            margin-bottom: 3px;
-            margin-right: 3px;
-            min-width: 90px;
-            max-width: 220px;
-            min-height: 30px;
-            max-height: 30px;
-        }
-
-        QTabBar#RhodiumTabBar::tab:hover {
-            background: #161B21;
-            color: #E8ECF2;
-        }
-
-        QTabBar#RhodiumTabBar::tab:selected {
-            background: #1B2028;
-            color: #E8ECF2;
-        }
-
-        QTabBar#RhodiumTabBar::close-button {
-            image: url(style/icons/close (2).png);
-            width: 14px;
-            height: 14px;
-            subcontrol-position: right;
-            margin-left: 4px;
-            margin-right: 2px;
-            border-radius: 4px;
-            padding: 2px;
-        }
-
-        QTabBar#RhodiumTabBar::close-button:hover {
-            background: #303846;
-        }
-
-        QTabBar#RhodiumTabBar QToolButton {
-            background: transparent;
-            border: none;
-            border-radius: 4px;
-            color: #9AA3B2;
-            margin: 4px 2px;
-            min-width: 20px;
-            max-width: 20px;
-        }
-
-        QTabBar#RhodiumTabBar QToolButton:hover {
-            background: #171C23;
-            color: #E8ECF2;
-        }
-
-        QToolButton#NewTabButton {
-            background: transparent;
-            border: none;
-            border-radius: 6px;
-            padding: 0;
-            margin-top: 4px;
-            margin-bottom: 4px;
-            color: #9AA3B2;
-        }
-
-        QToolButton#NewTabButton:hover {
-            background: #171C23;
-        }
-
-        QToolButton#NewTabButton:pressed {
-            background: #1B2028;
-        }
-
-
-        /* =========================================================
-        DOWNLOADS
-        ========================================================= */
-
-        QToolButton#DownloadButton {
-            background: transparent;
-            border: none;
-            border-radius: 6px;
-            padding: 0;
-            margin: 0 2px;
-        }
-
-        QToolButton#DownloadButton:hover {
-            background: #171C23;
-        }
-
-        QToolButton#DownloadButton:pressed {
-            background: #1B2028;
-        }
-
-        QFrame#DownloadPopup {
-            background: #101318;
-            border: 1px solid #252B34;
-            border-radius: 8px;
-        }
-
-        QFrame#DownloadPanel {
-            background: #101318;
-            border: 1px solid #252B34;
-            border-radius: 8px;
-        }
-
-        QLabel#PopupHeader {
-            color: #E8ECF2;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 10px 12px;
-        }
-
-        QFrame#PanelDivider {
-            background: #252B34;
-            border: none;
-        }
-
-        QFrame#DownloadPopupItem {
-            background: #12151A;
-            border: 1px solid #252B34;
-            border-radius: 6px;
-        }
-
-        QFrame#DownloadPopupItem:hover {
-            border-color: #303846;
-        }
-
-        QFrame#DownloadMenuRow {
-            background: transparent;
-            border: none;
-            border-radius: 6px;
-        }
-
-        QFrame#DownloadMenuRow:hover {
-            background: #171C23;
-        }
-
-        QLabel#DownloadItemIcon {
-            font-size: 14px;
-            background: #171C23;
-            border-radius: 4px;
-        }
-
-        QLabel#DownloadItemName {
-            color: #E8ECF2;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        QLabel#DownloadItemStatus {
-            color: #9AA3B2;
-            font-size: 11px;
-        }
-
-        QLabel#DownloadItemSpeed {
-            color: #687282;
-            font-size: 11px;
-        }
-
-        QProgressBar#DownloadProgressBar {
-            background: #171C23;
-            border: none;
-            border-radius: 2px;
-        }
-
-        QProgressBar#DownloadProgressBar::chunk {
-            background: #6EA8FF;
-            border-radius: 2px;
-        }
-
-        QToolButton#DownloadMiniBtn {
-            background: #171C23;
-            color: #9AA3B2;
-            border: none;
-            border-radius: 4px;
-            font-size: 11px;
-        }
-
-        QToolButton#DownloadMiniBtn:hover {
-            background: #1B2028;
-            color: #E8ECF2;
-        }
-
-        QLabel#PanelFooter {
-            color: #6EA8FF;
-            font-size: 12px;
-            font-weight: 600;
-            padding: 10px;
-            border-top: 1px solid #252B34;
-        }
-
-        QLabel#PanelFooter:hover {
-            background: #171C23;
-        }
-
-        QLabel#DownloadEmpty {
-            color: #687282;
-            font-size: 12px;
-            padding: 20px;
-        }
-
-        QScrollArea#DownloadScroll {
-            background: transparent;
-            border: none;
-        }
-
-        QFrame#DownloadPopup QScrollBar:vertical,
-        QFrame#DownloadPanel QScrollBar:vertical {
-            background: transparent;
-            width: 6px;
-            margin: 4px 2px;
-        }
-
-        QFrame#DownloadPopup QScrollBar::handle:vertical,
-        QFrame#DownloadPanel QScrollBar::handle:vertical {
-            background: #252B34;
-            border-radius: 2px;
-            min-height: 20px;
-        }
-
-        QFrame#DownloadPopup QScrollBar::handle:vertical:hover,
-        QFrame#DownloadPanel QScrollBar::handle:vertical:hover {
-            background: #303846;
-        }
-
-
-        /* =========================================================
-        SUGGESTION POPUP
-        ========================================================= */
-
-        QFrame#SuggestionPopup {
-            background: #101318;
-            border: 1px solid #252B34;
-            border-radius: 8px;
-        }
-
-        QListWidget#SuggestionList {
-            background: transparent;
-            border: none;
-            outline: none;
-        }
-
-        QListWidget#SuggestionList::item {
-            background: transparent;
-            border-radius: 6px;
-            margin: 1px 2px;
-        }
-
-        QListWidget#SuggestionList::item:hover {
-            background: #171C23;
-        }
-
-        QListWidget#SuggestionList::item:selected {
-            background: #1B2028;
-        }
-
-        QWidget#SuggestionRow {
-            background: transparent;
-        }
-
-        QLabel#SuggestionPrimary {
-            color: #E8ECF2;
-            font-size: 12px;
-            font-weight: 500;
-            background: transparent;
-        }
-
-        QLabel#SuggestionSecondary {
-            color: #9AA3B2;
-            font-size: 11px;
-            background: transparent;
-        }
-
-        QLabel#SuggestionIcon {
-            background: transparent;
-        }
-
-
-        /* =========================================================
-        STATUS BAR
-        ========================================================= */
-
-        QStatusBar {
-            background: #12151A;
-            border-top: 1px solid #252B34;
-            color: #687282;
-            min-height: 22px;
-            max-height: 22px;
-        }
-
-        QLabel#StatusLabel {
-            color: #687282;
-            font-size: 11px;
-            padding-left: 6px;
-            padding-right: 6px;
-        }
-
-
-        /* =========================================================
-        MENUS
-        ========================================================= */
-
-        QMenu {
-            background: #101318;
-            color: #E8ECF2;
-            border: 1px solid #252B34;
-            border-radius: 6px;
-            padding: 4px;
-            font-size: 12px;
-        }
-
-        QMenu::item {
-            padding: 6px 28px 6px 12px;
-            border-radius: 4px;
-            margin: 1px;
-        }
-
-        QMenu::item:selected {
-            background: #1B2028;
-            color: #ffffff;
-        }
-
-        QMenu::separator {
-            height: 1px;
-            background: #252B34;
-            margin: 4px 6px;
-        }
-
-        QMenu::section {
-            color: #687282;
-            font-size: 10px;
-            padding: 4px 12px 2px;
-            font-weight: 600;
-        }
-
-        QPushButton#WinMinBtn,
-        QPushButton#WinMaxBtn,
-        QPushButton#WinCloseBtn {
-            border: none;
-            background: transparent;
-            color: #9AA3B2;
-            font-size: 14px;
-            border-radius: 4px;
-        }
-
-        QPushButton#WinMinBtn:hover,
-        QPushButton#WinMaxBtn:hover {
-            background: #171C23;
-            color: #E8ECF2;
-        }
-
-        QPushButton#WinCloseBtn:hover {
-            background: #E06C75;
-            color: white;
-        }
-
-        QPushButton#WinMinBtn:pressed,
-        QPushButton#WinMaxBtn:pressed,
-        QPushButton#WinCloseBtn:pressed {
-            background: #1B2028;
-        }
-
-
-        /* =========================================================
-        DIALOGS
-        ========================================================= */
-
-        QDialog {
-            background: #101318;
-            color: #E8ECF2;
-        }
-
-        QLabel {
-            color: #9AA3B2;
-        }
-
-        QLabel#SettingsTitle {
-            color: #E8ECF2;
-            font-size: 16px;
-            font-weight: 600;
-        }
-
-
-        /* =========================================================
-        GENERAL INPUTS
-        ========================================================= */
-
-        QLineEdit {
-            background: #101318;
-            color: #E8ECF2;
-            border: 1px solid #252B34;
-            border-radius: 6px;
-            padding: 5px 8px;
-        }
-
-        QLineEdit:hover {
-            border-color: #303846;
-        }
-
-        QLineEdit:focus {
-            border-color: #6EA8FF;
-        }
-
-
-        /* =========================================================
-        GENERAL BUTTONS
-        ========================================================= */
-
-        QPushButton {
-            background: #171C23;
-            color: #9AA3B2;
-            border: 1px solid #252B34;
-            border-radius: 6px;
-            padding: 6px 12px;
-            font-size: 12px;
-        }
-
-        QPushButton:hover {
-            background: #1B2028;
-            color: #E8ECF2;
-            border-color: #303846;
-        }
-
-        QPushButton:pressed {
-            background: #252B34;
-        }
-
-        QPushButton#PrimaryBtn {
-            background: #6EA8FF;
-            color: #0B0D10;
-            font-weight: 600;
-            border: none;
-        }
-
-        QPushButton#PrimaryBtn:hover {
-            background: #82B5FF;
-        }
-
-
-        /* =========================================================
-        CHECKBOX
-        ========================================================= */
-
-        QCheckBox {
-            color: #9AA3B2;
-            spacing: 6px;
-        }
-
-        QCheckBox::indicator {
-            width: 14px;
-            height: 14px;
-            border-radius: 3px;
-            border: 1px solid #252B34;
-            background: #101318;
-        }
-
-        QCheckBox::indicator:checked {
-            background: #6EA8FF;
-            border-color: #6EA8FF;
-        }
-
-
-        /* =========================================================
-        COMBO / SPIN
-        ========================================================= */
-
-        QSpinBox,
-        QComboBox {
-            background: #101318;
-            color: #E8ECF2;
-            border: 1px solid #252B34;
-            border-radius: 6px;
-            padding: 4px 6px;
-        }
-
-        QSpinBox:focus,
-        QComboBox:focus {
-            border-color: #6EA8FF;
-        }
-
-
-        /* =========================================================
-        LIST
-        ========================================================= */
-
-        QListWidget {
-            background: #101318;
-            color: #E8ECF2;
-            border: 1px solid #252B34;
-            border-radius: 6px;
-            padding: 4px;
-        }
-
-        QListWidget::item {
-            padding: 4px;
-            border-radius: 4px;
-        }
-
-        QListWidget::item:selected {
-            background: #1B2028;
-        }
-
-
-        /* =========================================================
-        TEXT EDIT
-        ========================================================= */
-
-        QTextEdit {
-            background: #101318;
-            color: #E8ECF2;
-            border: 1px solid #252B34;
-            border-radius: 6px;
-        }
-
-
-        /* =========================================================
-        FIND BAR
-        ========================================================= */
-
-        QFrame#FindBar {
-            background: #12151A;
-            border-top: 1px solid #252B34;
-            max-height: 40px;
-        }
-
-        QLineEdit#FindInput {
-            background: #101318;
-            border-radius: 6px;
-            padding: 4px 8px;
-            max-width: 280px;
-        }
-
-        QPushButton#FindClose {
-            background: transparent;
-            border: none;
-            border-radius: 4px;
-        }
-
-        QPushButton#FindClose:hover {
-            background: #171C23;
-        }
-        """
+    return qss()
 
 def _shortcut_icon_html(shortcut: dict, fallback_icon: str) -> str:
     """Build a shortcut icon img tag. Uses base64 for local files because QWebEngine blocks file:// in setHtml()."""
@@ -722,7 +57,7 @@ def get_home_page_html(shortcuts=None) -> str:
     """
 
     shortcuts_html = ""
-    for s in shortcuts:
+    for i, s in enumerate(shortcuts):
         name = html_module.escape(s.get("name", "Shortcut"))
         url = s.get("url", "#")
         url_attr = html_module.escape(url, quote=True)
@@ -737,20 +72,26 @@ def get_home_page_html(shortcuts=None) -> str:
         icon_element = _shortcut_icon_html(s, fallback_icon)
 
         shortcuts_html += f"""
-            <article class="shortcut-card" data-url="{url_attr}">
+            <article class="shortcut-card" data-url="{url_attr}" style="animation-delay:{i * 40}ms">
+                <div class="shortcut-actions">
+                    <button type="button" class="shortcut-action edit" data-href="{edit_href}" title="Edit" aria-label="Edit {name}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                             stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    </button>
+                    <button type="button" class="shortcut-action delete" data-href="{delete_href}" title="Remove" aria-label="Remove {name}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                             stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+                    </button>
+                </div>
                 <button type="button" class="shortcut-main" aria-label="Open {name}">
                     <span class="shortcut-icon">{icon_element}</span>
                     <span class="shortcut-label">{name}</span>
                 </button>
-                <div class="shortcut-actions">
-                    <button type="button" class="shortcut-action edit" data-href="{edit_href}" title="Edit">Edit</button>
-                    <button type="button" class="shortcut-action delete" data-href="{delete_href}" title="Remove">Remove</button>
-                </div>
             </article>
         """
 
     shortcuts_html += """
-        <button type="button" class="shortcut-card add" id="add-shortcut">
+        <button type="button" class="shortcut-card add" id="add-shortcut" style="animation-delay:400ms">
             <span class="shortcut-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                      stroke-linecap="round" aria-hidden="true">
@@ -774,22 +115,78 @@ def get_home_page_html(shortcuts=None) -> str:
     padding: 0;
 }}
 
+{css_vars()}
+
 html, body {{
     width: 100%;
     height: 100%;
-    background: #0B0D10;
+    background: var(--bg_app);
 }}
 
 body {{
-    color: #E8ECF2;
-    font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--text_primary);
+    font-family: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
     user-select: none;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
+    position: relative;
+}}
+
+/* Immersive animated gradient backdrop */
+.backdrop {{
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background:
+        radial-gradient(60% 55% at 18% 18%, #EDE8FD 0%, transparent 60%),
+        radial-gradient(55% 50% at 82% 12%, #E3E9FA 0%, transparent 55%),
+        radial-gradient(60% 60% at 78% 82%, #EFE7FB 0%, transparent 60%),
+        radial-gradient(50% 55% at 15% 80%, #E8F2FA 0%, transparent 55%),
+        linear-gradient(160deg, #F7F6FB 0%, #F3F5FA 100%);
+}}
+
+.backdrop .orb {{
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: .55;
+    will-change: transform;
+    animation: drift 22s ease-in-out infinite alternate;
+}}
+
+.backdrop .orb.o1 {{
+    width: 440px; height: 440px;
+    left: -120px; top: -120px;
+    background: #CDBDF5;
+    animation-duration: 26s;
+}}
+
+.backdrop .orb.o2 {{
+    width: 380px; height: 380px;
+    right: -100px; top: -60px;
+    background: #B9CBF2;
+    animation-duration: 30s;
+    animation-delay: -8s;
+}}
+
+.backdrop .orb.o3 {{
+    width: 460px; height: 460px;
+    left: 30%; bottom: -200px;
+    background: #D8C6F2;
+    animation-duration: 34s;
+    animation-delay: -16s;
+}}
+
+@keyframes drift {{
+    from {{ transform: translate3d(0, 0, 0) scale(1); }}
+    to   {{ transform: translate3d(30px, -24px, 0) scale(1.08); }}
 }}
 
 .page {{
+    position: relative;
+    z-index: 1;
     width: 100%;
     display: flex;
     align-items: center;
@@ -798,16 +195,16 @@ body {{
 }}
 
 .shell {{
-    width: min(700px, 100%);
+    width: min(720px, 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 32px;
-    animation: rise .4s cubic-bezier(.22, 1, .36, 1) both;
+    gap: 30px;
+    animation: rise .55s cubic-bezier(.22, 1, .36, 1) both;
 }}
 
 @keyframes rise {{
-    from {{ opacity: 0; transform: translateY(12px); }}
+    from {{ opacity: 0; transform: translateY(16px); }}
     to   {{ opacity: 1; transform: translateY(0); }}
 }}
 
@@ -815,69 +212,85 @@ body {{
     text-align: center;
 }}
 
+.eyebrow {{
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+}}
+
 .brand {{
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
+    gap: 12px;
+    padding: 8px 16px 8px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .65);
+    border: 1px solid rgba(255, 255, 255, .9);
+    box-shadow: var(--shadow_sm);
+    backdrop-filter: blur(8px);
 }}
 
 .brand-mark {{
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
     display: grid;
     place-items: center;
-    border-radius: 6px;
-    background: #1B2028;
-    border: 1px solid #303846;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent) 0%, #8B6FE0 100%);
+    box-shadow: 0 4px 12px rgba(109, 79, 216, .35);
 }}
 
 .brand-mark svg {{
-    width: 16px;
-    height: 16px;
-    stroke: #6EA8FF;
+    width: 18px;
+    height: 18px;
+    stroke: #FFFFFF;
 }}
 
 .brand-name {{
-    font-size: 22px;
-    font-weight: 600;
+    font-size: 19px;
+    font-weight: 700;
     letter-spacing: -.02em;
-    color: #E8ECF2;
+    color: var(--text_primary);
 }}
 
 .search-panel {{
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }}
 
 .search {{
     display: flex;
     align-items: center;
-    height: 52px;
-    padding: 0 16px;
-    border-radius: 12px;
-    background: #101318;
-    border: 1px solid #252B34;
-    transition: border-color .15s ease, background .15s ease;
+    height: 58px;
+    padding: 0 18px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, .86);
+    border: 1px solid rgba(216, 219, 228, .9);
+    box-shadow: var(--shadow_md);
+    transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+    backdrop-filter: blur(10px);
 }}
 
 .search:hover {{
-    background: #171C23;
-    border-color: #303846;
+    border-color: var(--border_strong);
 }}
 
 .search:focus-within {{
-    background: #171C23;
-    border-color: #6EA8FF;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent_soft), var(--shadow_md);
+    background: #FFFFFF;
 }}
 
 .search-icon {{
-    width: 18px;
-    height: 18px;
-    margin-right: 12px;
-    color: #9AA3B2;
+    width: 20px;
+    height: 20px;
+    margin-right: 14px;
+    color: var(--text_secondary);
     flex-shrink: 0;
 }}
 
@@ -886,17 +299,17 @@ body {{
     border: none;
     outline: none;
     background: transparent;
-    color: #E8ECF2;
-    font-size: 14px;
+    color: var(--text_primary);
+    font-size: 15px;
 }}
 
 .search input::placeholder {{
-    color: #687282;
+    color: var(--text_muted);
 }}
 
 .search-hint {{
     text-align: center;
-    color: #687282;
+    color: var(--text_muted);
     font-size: 11px;
 }}
 
@@ -904,32 +317,32 @@ body {{
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
 }}
 
 .section-head {{
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 2px;
+    padding: 0 4px;
 }}
 
 .section-title {{
-    color: #9AA3B2;
+    color: var(--text_secondary);
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: .05em;
+    letter-spacing: .08em;
     text-transform: uppercase;
 }}
 
 .section-count {{
-    color: #687282;
+    color: var(--text_muted);
     font-size: 11px;
 }}
 
 .shortcuts {{
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
     gap: 12px;
     width: 100%;
 }}
@@ -940,57 +353,62 @@ body {{
     background: transparent;
     padding: 0;
     text-align: center;
+    animation: rise .45s cubic-bezier(.22, 1, .36, 1) both;
 }}
 
 .shortcut-main,
 .shortcut-card.add {{
     width: 100%;
-    height: 98px;
+    padding: 12px 8px 10px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid #252B34;
-    background: #101318;
-    color: #9AA3B2;
+    border-radius: 16px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text_secondary);
     cursor: pointer;
-    transition: border-color .15s, background .15s, color .15s;
-}}
-
-.shortcut-card.add {{
-    border-style: dashed;
+    transition: background .18s, border-color .18s, transform .18s, box-shadow .18s;
 }}
 
 .shortcut-main:hover,
 .shortcut-card.add:hover {{
-    border-color: #303846;
-    background: #171C23;
-    color: #E8ECF2;
+    background: rgba(255, 255, 255, .7);
+    border-color: var(--border);
+    box-shadow: var(--shadow_md);
+    transform: translateY(-2px);
+    color: var(--text_primary);
 }}
 
 .shortcut-icon {{
-    width: 40px;
-    height: 40px;
+    width: 52px;
+    height: 52px;
     display: grid;
     place-items: center;
-    border-radius: 6px;
-    background: #171C23;
-    border: 1px solid #252B34;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, .9);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow_sm);
+    transition: transform .18s;
+}}
+
+.shortcut-main:hover .shortcut-icon,
+.shortcut-card.add:hover .shortcut-icon {{
+    transform: scale(1.06);
 }}
 
 .shortcut-icon svg {{
-    width: 18px;
-    height: 18px;
-    stroke: #9AA3B2;
+    width: 22px;
+    height: 22px;
+    stroke: var(--accent);
 }}
 
 .shortcut-favicon {{
-    width: 20px;
-    height: 20px;
-    border-radius: 4px;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
     object-fit: contain;
 }}
 
@@ -1006,51 +424,78 @@ body {{
 
 .shortcut-actions {{
     position: absolute;
-    top: 4px;
-    right: 4px;
-    display: none;
+    top: 6px;
+    right: 6px;
+    display: flex;
     gap: 4px;
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity .15s, transform .15s;
+    z-index: 2;
 }}
 
 .shortcut-card:hover .shortcut-actions {{
-    display: flex;
+    opacity: 1;
+    transform: translateY(0);
 }}
 
 .shortcut-action {{
-    border: 1px solid #252B34;
-    background: #0B0D10;
-    color: #9AA3B2;
-    border-radius: 4px;
-    padding: 2px 6px;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, .92);
+    color: var(--text_secondary);
+    border-radius: 8px;
     font-size: 10px;
     cursor: pointer;
+    box-shadow: var(--shadow_sm);
+    transition: background .15s, color .15s;
 }}
 
-.shortcut-action.delete {{
-    color: #E06C75;
+.shortcut-action svg {{
+    width: 14px;
+    height: 14px;
 }}
 
 .shortcut-action:hover {{
-    background: #171C23;
-    color: #E8ECF2;
+    background: var(--bg_hover);
+    color: var(--text_primary);
+}}
+
+.shortcut-action.delete {{
+    color: var(--danger);
+}}
+
+.shortcut-action.delete:hover {{
+    background: var(--danger_soft);
+    color: var(--danger);
 }}
 
 .footer {{
     text-align: center;
-    color: #687282;
+    color: var(--text_muted);
     font-size: 11px;
     letter-spacing: 2px;
     text-transform: uppercase;
-    margin-top: 16px;
+    padding-top: 4px;
 }}
 </style>
 </head>
 <body>
 
+<div class="backdrop" aria-hidden="true">
+    <div class="orb o1"></div>
+    <div class="orb o2"></div>
+    <div class="orb o3"></div>
+</div>
+
 <main class="page">
     <div class="shell">
 
         <header class="hero">
+            <div class="eyebrow">Welcome back</div>
             <div class="brand">
                 <div class="brand-mark">
                     <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"
@@ -1198,6 +643,7 @@ def get_offline_page_html(failed_url="") -> str:
     <title>Rhodium — Offline</title>
 
     <style>
+        {css_vars()}
 
         * {{
             box-sizing: border-box;
@@ -1209,92 +655,106 @@ def get_offline_page_html(failed_url="") -> str:
         body {{
             width: 100%;
             height: 100%;
-            background: #0B0D10;
+            background: var(--bg_app);
         }}
 
         body {{
-            color: #E8ECF2;
-            font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text_primary);
+            font-family: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             overflow: hidden;
             user-select: none;
+            position: relative;
+            background:
+                radial-gradient(55% 50% at 20% 20%, #EDE8FD 0%, transparent 60%),
+                radial-gradient(55% 50% at 82% 18%, #E3E9FA 0%, transparent 55%),
+                radial-gradient(60% 60% at 78% 82%, #EFE7FB 0%, transparent 60%),
+                linear-gradient(160deg, #F7F6FB 0%, #F3F5FA 100%);
         }}
 
         .container {{
+            position: relative;
+            z-index: 1;
             width: 480px;
             max-width: calc(100vw - 40px);
             display: flex;
             flex-direction: column;
             align-items: center;
             text-align: center;
+            background: rgba(255, 255, 255, .78);
+            border: 1px solid rgba(255, 255, 255, .9);
+            border-radius: 24px;
+            padding: 40px 36px;
+            box-shadow: var(--shadow_lg);
+            backdrop-filter: blur(12px);
         }}
 
         .icon-container {{
-            width: 60px;
-            height: 60px;
+            width: 64px;
+            height: 64px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 12px;
-            background: #101318;
-            border: 1px solid #252B34;
-            margin-bottom: 20px;
+            border-radius: 18px;
+            background: var(--accent_soft);
+            border: 1px solid var(--accent_soft_hover);
+            margin-bottom: 22px;
         }}
 
         .icon-container svg {{
-            width: 28px;
-            height: 28px;
-            stroke: #6EA8FF;
+            width: 30px;
+            height: 30px;
+            stroke: var(--accent);
         }}
 
         h1 {{
-            color: #E8ECF2;
-            font-size: 20px;
-            font-weight: 600;
+            color: var(--text_primary);
+            font-size: 21px;
+            font-weight: 700;
             letter-spacing: -0.3px;
             margin-bottom: 8px;
         }}
 
         .description {{
-            color: #9AA3B2;
+            color: var(--text_secondary);
             font-size: 12px;
             line-height: 1.5;
-            max-width: 380px;
-            margin-bottom: 16px;
+            max-width: 360px;
+            margin-bottom: 18px;
         }}
 
         .url {{
             width: 100%;
             max-width: 380px;
-            background: #101318;
-            border: 1px solid #252B34;
-            border-radius: 6px;
-            padding: 8px 12px;
-            color: #687282;
+            background: var(--bg_sunken);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 9px 14px;
+            color: var(--text_muted);
             font-size: 11px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            margin-bottom: 20px;
+            margin-bottom: 22px;
         }}
 
         .buttons {{
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 10px;
         }}
 
         button {{
-            height: 34px;
-            padding: 0 14px;
-            border-radius: 6px;
-            border: 1px solid #252B34;
-            background: #171C23;
-            color: #9AA3B2;
+            height: 38px;
+            padding: 0 18px;
+            border-radius: 10px;
+            border: 1px solid var(--border_strong);
+            background: var(--bg_surface);
+            color: var(--text_secondary);
             font-family: inherit;
             font-size: 12px;
             cursor: pointer;
@@ -1302,29 +762,29 @@ def get_offline_page_html(failed_url="") -> str:
         }}
 
         button:hover {{
-            background: #1B2028;
-            border-color: #303846;
-            color: #E8ECF2;
+            background: var(--bg_hover);
+            border-color: var(--border_strong);
+            color: var(--text_primary);
         }}
 
         .primary {{
-            background: #6EA8FF;
-            border-color: #6EA8FF;
-            color: #0B0D10;
+            background: var(--accent);
+            border-color: var(--accent);
+            color: var(--on_accent);
             font-weight: 600;
         }}
 
         .primary:hover {{
-            background: #82B5FF;
-            border-color: #82B5FF;
-            color: #0B0D10;
+            background: var(--accent_hover);
+            border-color: var(--accent_hover);
+            color: var(--on_accent);
         }}
 
         .footer {{
-            margin-top: 28px;
-            color: #687282;
+            margin-top: 30px;
+            color: var(--text_muted);
             font-size: 10px;
-            letter-spacing: 1px;
+            letter-spacing: 2px;
         }}
 
     </style>
@@ -1395,82 +855,103 @@ def get_downloads_page_html(downloads_json: str = "[]") -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Downloads — Rhodium</title>
 <style>
+{css_vars()}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
-    background: #0b0d10;
-    color: #e8eaed;
+    background: var(--bg_app);
+    color: var(--text_primary);
     font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
     min-height: 100vh;
 }}
-.page {{ max-width: 920px; margin: 0 auto; padding: 32px 24px 48px; }}
+.page {{ max-width: 920px; margin: 0 auto; padding: 36px 24px 56px; }}
 .header {{
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 26px; gap: 16px; flex-wrap: wrap;
 }}
-.header h1 {{ font-size: 24px; font-weight: 600; letter-spacing: -.02em; }}
+.heading {{ display: flex; align-items: center; gap: 14px; }}
+.heading-icon {{
+    width: 44px; height: 44px; border-radius: 13px;
+    background: var(--accent_soft); color: var(--accent);
+    display: grid; place-items: center;
+}}
+.heading-icon svg {{ width: 22px; height: 22px; }}
+.heading h1 {{ font-size: 22px; font-weight: 700; letter-spacing: -.02em; }}
+.heading .sub {{ font-size: 12px; color: var(--text_muted); margin-top: 2px; }}
 .header-actions {{ display: flex; gap: 10px; align-items: center; flex: 1; justify-content: flex-end; }}
 .search {{
-    background: #181b21; border: 1px solid #2b2f36; border-radius: 9px;
-    color: #e1e4e8; padding: 8px 12px; font-size: 13px; width: min(280px, 100%);
-    outline: none;
+    background: var(--bg_surface); border: 1px solid var(--border_strong); border-radius: 10px;
+    color: var(--text_primary); padding: 9px 14px; font-size: 13px; width: min(280px, 100%);
+    outline: none; transition: border-color .15s, box-shadow .15s;
 }}
-.search:focus {{ border-color: #426cae; }}
+.search:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent_soft); }}
 .btn {{
-    background: #1b1e24; color: #c6cad1; border: 1px solid #2b2f36;
-    border-radius: 7px; padding: 8px 14px; font-size: 12px; cursor: pointer;
+    background: var(--bg_surface); color: var(--text_secondary); border: 1px solid var(--border_strong);
+    border-radius: 10px; padding: 9px 14px; font-size: 12px; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
 }}
-.btn:hover {{ background: #252930; color: #fff; }}
-.btn-danger:hover {{ background: #4a2020; border-color: #6b3030; }}
-.section {{ margin-bottom: 28px; }}
+.btn:hover {{ background: var(--bg_hover); color: var(--text_primary); }}
+.btn-danger {{ color: var(--danger); }}
+.btn-danger:hover {{ background: var(--danger_soft); border-color: var(--danger); color: var(--danger); }}
+.section {{ margin-bottom: 30px; }}
 .section-title {{
-    font-size: 11px; font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase; color: #747b86; margin-bottom: 10px;
+    font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text_muted); margin-bottom: 12px;
 }}
 .list {{ display: flex; flex-direction: column; gap: 8px; }}
 .item {{
-    background: #14171d; border: 1px solid #252b34; border-radius: 10px;
-    padding: 14px 16px; display: grid; grid-template-columns: 36px 1fr auto;
-    gap: 12px; align-items: start; transition: border-color .15s;
+    background: var(--bg_surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 14px 16px; display: grid; grid-template-columns: 40px 1fr auto;
+    gap: 14px; align-items: start; transition: border-color .15s, box-shadow .15s;
 }}
-.item:hover {{ border-color: #353d49; }}
-.item.executable {{ border-left: 3px solid #e8a045; }}
+.item:hover {{ border-color: var(--border_strong); box-shadow: var(--shadow_sm); }}
+.item.executable {{ border-left: 3px solid var(--warning); }}
 .icon {{
-    width: 32px; height: 32px; border-radius: 8px;
-    background: #222730; display: grid; place-items: center; font-size: 16px;
+    width: 38px; height: 38px; border-radius: 11px;
+    background: var(--bg_sunken); display: grid; place-items: center; font-size: 18px;
 }}
 .meta {{ min-width: 0; }}
 .name {{
-    font-size: 13px; font-weight: 600; color: #eef1f5;
+    font-size: 13px; font-weight: 600; color: var(--text_primary);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }}
-.status {{ font-size: 11px; color: #8b939f; margin-top: 3px; }}
-.details {{ font-size: 10px; color: #636b78; margin-top: 4px; word-break: break-all; }}
-.progress-wrap {{ margin-top: 8px; }}
+.status {{ font-size: 11px; color: var(--text_secondary); margin-top: 3px; }}
+.details {{ font-size: 11px; color: var(--text_muted); margin-top: 4px; word-break: break-all; }}
+.progress-wrap {{ margin-top: 9px; }}
 .progress {{
-    height: 4px; background: #222730; border-radius: 2px; overflow: hidden;
+    height: 5px; background: var(--bg_sunken); border-radius: 3px; overflow: hidden;
 }}
 .progress-bar {{
-    height: 100%; background: #4c8dff; border-radius: 2px;
+    height: 100%; background: linear-gradient(90deg, var(--accent), #8B6FE0); border-radius: 3px;
     transition: width .2s ease;
 }}
-.progress-text {{ font-size: 10px; color: #727a87; margin-top: 4px; }}
+.progress-text {{ font-size: 10px; color: var(--text_muted); margin-top: 5px; }}
 .actions {{ display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }}
 .action {{
-    background: #242932; color: #d5dae3; border: none; border-radius: 6px;
-    padding: 5px 10px; font-size: 11px; cursor: pointer;
+    background: var(--bg_sunken); color: var(--text_secondary); border: none; border-radius: 8px;
+    padding: 6px 11px; font-size: 11px; cursor: pointer; transition: background .15s, color .15s;
 }}
-.action:hover {{ background: #2e3540; color: #fff; }}
-.action.primary {{ background: #315f9d; color: #fff; }}
-.action.primary:hover {{ background: #3b6fae; }}
+.action:hover {{ background: var(--bg_active); color: var(--text_primary); }}
+.action.primary {{ background: var(--accent_soft); color: var(--accent); font-weight: 600; }}
+.action.primary:hover {{ background: var(--accent_soft_hover); color: var(--accent_hover); }}
 .empty {{
-    text-align: center; color: #636b78; padding: 40px 20px; font-size: 13px;
+    text-align: center; color: var(--text_muted); padding: 48px 20px; font-size: 13px;
 }}
+.empty .big {{ font-size: 42px; opacity: .5; margin-bottom: 12px; }}
 </style>
 </head>
 <body>
 <div class="page">
     <div class="header">
-        <h1>Downloads</h1>
+        <div class="heading">
+            <div class="heading-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                     stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg>
+            </div>
+            <div>
+                <h1>Downloads</h1>
+                <div class="sub">Files you've downloaded with Rhodium</div>
+            </div>
+        </div>
         <div class="header-actions">
             <input type="search" class="search" id="search" placeholder="Search downloads…">
             <button class="btn btn-danger" id="clear-btn">Clear</button>
@@ -1483,7 +964,10 @@ body {{
     <div class="section">
         <div class="section-title" id="recent-title">Recent downloads</div>
         <div class="list" id="recent-list"></div>
-        <div class="empty" id="empty-msg" style="display:none">No downloads yet</div>
+        <div class="empty" id="empty-msg" style="display:none">
+            <div class="big">⬇️</div>
+            <div>No downloads yet</div>
+        </div>
     </div>
 </div>
 <script>
@@ -1643,84 +1127,105 @@ def get_history_page_html(history_json: str = "[]") -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>History — Rhodium</title>
 <style>
+{css_vars()}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
-    background: #0b0d10; color: #e8eaed;
+    background: var(--bg_app); color: var(--text_primary);
     font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
     min-height: 100vh;
 }}
-.page {{ max-width: 920px; margin: 0 auto; padding: 32px 24px 48px; }}
+.page {{ max-width: 920px; margin: 0 auto; padding: 36px 24px 56px; }}
 .header {{
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 26px; gap: 16px; flex-wrap: wrap;
 }}
-.header h1 {{ font-size: 24px; font-weight: 600; letter-spacing: -.02em; }}
+.heading {{ display: flex; align-items: center; gap: 14px; }}
+.heading-icon {{
+    width: 44px; height: 44px; border-radius: 13px;
+    background: var(--accent_soft); color: var(--accent);
+    display: grid; place-items: center;
+}}
+.heading-icon svg {{ width: 22px; height: 22px; }}
+.heading h1 {{ font-size: 22px; font-weight: 700; letter-spacing: -.02em; }}
+.heading .sub {{ font-size: 12px; color: var(--text_muted); margin-top: 2px; }}
 .header-actions {{ display: flex; gap: 10px; align-items: center; flex: 1; justify-content: flex-end; position: relative; }}
 .search {{
-    background: #181b21; border: 1px solid #2b2f36; border-radius: 9px;
-    color: #e1e4e8; padding: 8px 12px; font-size: 13px; width: min(280px, 100%);
-    outline: none;
+    background: var(--bg_surface); border: 1px solid var(--border_strong); border-radius: 10px;
+    color: var(--text_primary); padding: 9px 14px; font-size: 13px; width: min(280px, 100%);
+    outline: none; transition: border-color .15s, box-shadow .15s;
 }}
-.search:focus {{ border-color: #426cae; }}
+.search:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent_soft); }}
 .btn {{
-    background: #1b1e24; color: #c6cad1; border: 1px solid #2b2f36;
-    border-radius: 7px; padding: 8px 14px; font-size: 12px; cursor: pointer;
+    background: var(--bg_surface); color: var(--text_secondary); border: 1px solid var(--border_strong);
+    border-radius: 10px; padding: 9px 14px; font-size: 12px; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
 }}
-.btn:hover {{ background: #252930; color: #fff; }}
-.btn-danger:hover {{ background: #4a2020; border-color: #6b3030; }}
+.btn:hover {{ background: var(--bg_hover); color: var(--text_primary); }}
+.btn-danger {{ color: var(--danger); }}
+.btn-danger:hover {{ background: var(--danger_soft); border-color: var(--danger); color: var(--danger); }}
 .clear-menu {{
-    position: absolute; top: 42px; right: 0; z-index: 20;
-    background: #161a20; border: 1px solid #2b2f36; border-radius: 10px;
-    padding: 6px; min-width: 200px; box-shadow: 0 12px 30px rgba(0,0,0,.5);
+    position: absolute; top: 46px; right: 0; z-index: 20;
+    background: var(--bg_surface); border: 1px solid var(--border_strong); border-radius: 12px;
+    padding: 6px; min-width: 210px; box-shadow: var(--shadow_lg);
     display: none;
 }}
 .clear-menu.open {{ display: block; }}
 .clear-menu button {{
     display: block; width: 100%; text-align: left; background: none; border: none;
-    color: #d5dae3; padding: 9px 12px; font-size: 12.5px; border-radius: 7px; cursor: pointer;
+    color: var(--text_secondary); padding: 10px 12px; font-size: 12.5px; border-radius: 8px; cursor: pointer;
 }}
-.clear-menu button:hover {{ background: #232831; color: #fff; }}
-.clear-menu button.danger:hover {{ background: #3a1c1c; color: #ff9c9c; }}
+.clear-menu button:hover {{ background: var(--bg_hover); color: var(--text_primary); }}
+.clear-menu button.danger {{ color: var(--danger); }}
+.clear-menu button.danger:hover {{ background: var(--danger_soft); color: var(--danger); }}
 .section {{ margin-bottom: 26px; }}
 .section-title {{
-    font-size: 11px; font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase; color: #747b86; margin: 18px 4px 10px;
+    font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text_muted); margin: 18px 4px 10px;
 }}
 .list {{ display: flex; flex-direction: column; gap: 6px; }}
 .item {{
-    background: #14171d; border: 1px solid #252b34; border-radius: 10px;
-    padding: 10px 12px; display: grid; grid-template-columns: 30px 1fr auto;
-    gap: 12px; align-items: center; transition: border-color .15s, background .15s;
+    background: var(--bg_surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 14px; display: grid; grid-template-columns: 34px 1fr auto;
+    gap: 12px; align-items: center; transition: border-color .15s, box-shadow .15s;
     cursor: pointer;
 }}
-.item:hover {{ border-color: #353d49; background: #171b22; }}
+.item:hover {{ border-color: var(--border_strong); box-shadow: var(--shadow_sm); }}
 .fav-wrap {{
-    width: 28px; height: 28px; border-radius: 7px; background: #222730;
-    display: grid; place-items: center; overflow: hidden; font-size: 14px;
+    width: 32px; height: 32px; border-radius: 9px; background: var(--bg_sunken);
+    display: grid; place-items: center; overflow: hidden; font-size: 15px;
 }}
-.fav-wrap img {{ width: 20px; height: 20px; }}
+.fav-wrap img {{ width: 22px; height: 22px; }}
 .meta {{ min-width: 0; }}
 .title {{
-    font-size: 13px; font-weight: 600; color: #eef1f5;
+    font-size: 13px; font-weight: 600; color: var(--text_primary);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }}
-.sub {{ font-size: 11px; color: #8b939f; margin-top: 2px;
+.sub {{ font-size: 11px; color: var(--text_secondary); margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-.time {{ font-size: 11px; color: #6f7785; white-space: nowrap; padding-right: 4px; }}
+.time {{ font-size: 11px; color: var(--text_muted); white-space: nowrap; padding-right: 4px; }}
 .del {{
-    background: #242932; color: #d5dae3; border: none; border-radius: 6px;
-    padding: 6px 10px; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity .15s;
+    background: var(--bg_sunken); color: var(--text_secondary); border: none; border-radius: 8px;
+    padding: 6px 11px; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s;
 }}
 .item:hover .del {{ opacity: 1; }}
-.del:hover {{ background: #4a2020; color: #ff9c9c; }}
-.empty {{ text-align: center; color: #636b78; padding: 48px 20px; font-size: 13px; }}
-.empty .big {{ font-size: 40px; opacity: .5; margin-bottom: 10px; }}
+.del:hover {{ background: var(--danger_soft); color: var(--danger); }}
+.empty {{ text-align: center; color: var(--text_muted); padding: 48px 20px; font-size: 13px; }}
+.empty .big {{ font-size: 42px; opacity: .5; margin-bottom: 12px; }}
 </style>
 </head>
 <body>
 <div class="page">
     <div class="header">
-        <h1>History</h1>
+        <div class="heading">
+            <div class="heading-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                     stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            </div>
+            <div>
+                <h1>History</h1>
+                <div class="sub">Your browsing timeline</div>
+            </div>
+        </div>
         <div class="header-actions">
             <input type="search" class="search" id="search" placeholder="Search history…">
             <button class="btn btn-danger" id="clear-btn">Clear</button>
@@ -1879,59 +1384,61 @@ def get_cookie_debugger_page_html(cookies_json: str = "[]", diagnostics_json: st
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cookie Debugger — Rhodium</title>
 <style>
+{css_vars()}
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:#0b0d10;color:#e8eaed;font-family:"Segoe UI",Inter,-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh}}
-.page{{max-width:1100px;margin:0 auto;padding:28px 24px 48px}}
-.header{{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}}
+body{{background:var(--bg_app);color:var(--text_primary);font-family:"Segoe UI",Inter,-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh}}
+.page{{max-width:1100px;margin:0 auto;padding:32px 24px 56px}}
+.header{{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}}
 .header h1{{font-size:22px;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}}
-.header h1 span.badge{{font-size:11px;font-weight:600;letter-spacing:.06em;padding:4px 8px;border-radius:999px;background:#14171d;border:1px solid #252b34;color:#9aa3b2}}
-.sub{{color:#8b939f;font-size:12px;margin-top:4px;max-width:720px;line-height:1.5}}
+.header h1 span.badge{{font-size:11px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:999px;background:var(--accent_soft);border:1px solid var(--accent_soft_hover);color:var(--accent)}}
+.sub{{color:var(--text_secondary);font-size:12px;margin-top:4px;max-width:720px;line-height:1.5}}
 .status-row{{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}}
-.pill{{display:inline-flex;align-items:center;gap:6px;background:#14171d;border:1px solid #252b34;border-radius:999px;padding:6px 10px;font-size:11px;color:#c6cad1}}
-.pill .dot{{width:8px;height:8px;border-radius:999px;background:#3dd68c;box-shadow:0 0 0 4px rgba(61,214,140,.15)}}
-.pill.off .dot{{background:#e06c75;box-shadow:0 0 0 4px rgba(224,108,117,.15)}}
-.pill b{{color:#eef1f5;font-weight:600}}
-.card{{background:#14171d;border:1px solid #252b34;border-radius:12px;padding:14px 16px;margin-bottom:14px}}
-.card h2{{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8b939f;margin-bottom:10px}}
+.pill{{display:inline-flex;align-items:center;gap:6px;background:var(--bg_surface);border:1px solid var(--border_strong);border-radius:999px;padding:6px 11px;font-size:11px;color:var(--text_secondary)}}
+.pill .dot{{width:8px;height:8px;border-radius:999px;background:var(--success);box-shadow:0 0 0 4px var(--success_soft)}}
+.pill.off .dot{{background:var(--danger);box-shadow:0 0 0 4px var(--danger_soft)}}
+.pill b{{color:var(--text_primary);font-weight:600}}
+.card{{background:var(--bg_surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow_sm)}}
+.card h2{{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text_muted);margin-bottom:12px}}
 .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
 @media(max-width:760px){{.grid2{{grid-template-columns:1fr}}}}
-.kv{{background:#0f1217;border:1px solid #232831;border-radius:8px;padding:10px 12px}}
-.kv .k{{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#6f7785;margin-bottom:4px}}
-.kv .v{{font-size:12px;color:#d5dae3;word-break:break-all}}
+.kv{{background:var(--bg_inset);border:1px solid var(--border);border-radius:10px;padding:11px 13px}}
+.kv .k{{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--text_muted);margin-bottom:4px}}
+.kv .v{{font-size:12px;color:var(--text_primary);word-break:break-all}}
 .kv .v.mono{{font-family:ui-monospace,Consolas,monospace;font-size:11px}}
-.toolbar{{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}}
+.toolbar{{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}}
 .toolbar .left{{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1}}
-.search{{background:#0f1217;border:1px solid #2b2f36;border-radius:9px;color:#e1e4e8;padding:9px 12px;font-size:12.5px;width:min(360px,100%);outline:none}}
-.search:focus{{border-color:#426cae}}
-.select, .input-sm{{background:#0f1217;border:1px solid #2b2f36;border-radius:7px;color:#d5dae3;padding:8px 10px;font-size:12px;outline:none}}
-.select:focus,.input-sm:focus{{border-color:#426cae}}
-.btn{{background:#1b1e24;color:#c6cad1;border:1px solid #2b2f36;border-radius:7px;padding:8px 12px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}}
-.btn:hover{{background:#252930;color:#fff}}
-.btn.primary{{background:#315f9d;color:#fff;border-color:#315f9d}}
-.btn.primary:hover{{background:#3b6fae}}
-.btn.danger{{background:#2a1515;color:#ff9c9c;border-color:#4a2020}}
-.btn.danger:hover{{background:#4a2020}}
-.table-wrap{{overflow:auto;border:1px solid #252b34;border-radius:10px;background:#0f1217}}
+.search{{background:var(--bg_sunken);border:1px solid transparent;border-radius:10px;color:var(--text_primary);padding:9px 13px;font-size:12.5px;width:min(360px,100%);outline:none;transition:border-color .15s,box-shadow .15s}}
+.search:focus{{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent_soft);background:var(--bg_surface)}}
+.select, .input-sm{{background:var(--bg_sunken);border:1px solid transparent;border-radius:9px;color:var(--text_primary);padding:9px 11px;font-size:12px;outline:none;transition:border-color .15s}}
+.select:focus,.input-sm:focus{{border-color:var(--accent);background:var(--bg_surface)}}
+.btn{{background:var(--bg_sunken);color:var(--text_secondary);border:1px solid transparent;border-radius:9px;padding:9px 13px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .15s,color .15s}}
+.btn:hover{{background:var(--bg_hover);color:var(--text_primary)}}
+.btn.primary{{background:var(--accent);color:var(--on_accent);font-weight:600}}
+.btn.primary:hover{{background:var(--accent_hover);color:var(--on_accent)}}
+.btn.danger{{background:var(--danger_soft);color:var(--danger)}}
+.btn.danger:hover{{background:var(--danger);color:var(--on_accent)}}
+.table-wrap{{overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--bg_surface)}}
 table{{width:100%;border-collapse:collapse;min-width:860px}}
-thead th{{text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#747b86;background:#11141a;padding:10px 10px;border-bottom:1px solid #252b34;position:sticky;top:0}}
-tbody td{{padding:9px 10px;border-bottom:1px solid #1b1f27;font-size:12px;color:#d5dae3;vertical-align:top;max-width:240px;word-break:break-all}}
+thead th{{text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text_muted);background:var(--bg_inset);padding:11px 12px;border-bottom:1px solid var(--border);position:sticky;top:0}}
+tbody td{{padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text_primary);vertical-align:top;max-width:240px;word-break:break-all}}
+tbody tr:last-child td{{border-bottom:none}}
 tbody tr{{cursor:pointer}}
-tbody tr:hover{{background:#171b22}}
-.badge-yes{{background:#16301f;color:#7ee8a6;border:1px solid #1f4d2e;padding:2px 6px;border-radius:999px;font-size:10px;font-weight:700}}
-.badge-no{{background:#1e232e;color:#8aa0c8;border:1px solid #2b3446;padding:2px 6px;border-radius:999px;font-size:10px;font-weight:700}}
-.muted{{color:#6f7785}}
+tbody tr:hover{{background:var(--bg_hover)}}
+.badge-yes{{background:var(--success_soft);color:var(--success);border:1px solid var(--success_soft);padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700}}
+.badge-no{{background:var(--bg_sunken);color:var(--text_secondary);border:1px solid var(--border_strong);padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700}}
+.muted{{color:var(--text_muted)}}
 .masked{{letter-spacing:2px}}
-.empty{{text-align:center;color:#636b78;padding:32px 16px;font-size:13px}}
-.modal{{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}}
+.empty{{text-align:center;color:var(--text_muted);padding:36px 16px;font-size:13px}}
+.modal{{position:fixed;inset:0;background:rgba(24,26,34,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}}
 .modal.open{{display:flex}}
-.modal-card{{background:#14171d;border:1px solid #2b3446;border-radius:12px;max-width:620px;width:100%;padding:16px;max-height:85vh;overflow:auto}}
-.modal-card h3{{font-size:14px;margin-bottom:8px}}
+.modal-card{{background:var(--bg_surface);border:1px solid var(--border_strong);border-radius:16px;max-width:620px;width:100%;padding:20px;max-height:85vh;overflow:auto;box-shadow:var(--shadow_lg)}}
+.modal-card h3{{font-size:15px;margin-bottom:8px}}
 .dl{{display:grid;grid-template-columns:140px 1fr;gap:8px;font-size:12px;margin-top:10px}}
-.dl dt{{color:#8b939f}}
-.dl dd{{color:#eef1f5;word-break:break-all;font-family:ui-monospace,Consolas,monospace;font-size:11px}}
-.details-actions{{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}}
-.chk{{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#9aa3b2}}
-.raw{{background:#0f1217;border:1px solid #232831;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;color:#9aa3b2;max-height:260px;overflow:auto}}
+.dl dt{{color:var(--text_muted)}}
+.dl dd{{color:var(--text_primary);word-break:break-all;font-family:ui-monospace,Consolas,monospace;font-size:11px}}
+.details-actions{{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}}
+.chk{{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text_secondary)}}
+.raw{{background:var(--bg_inset);border:1px solid var(--border);border-radius:10px;padding:12px;font-family:ui-monospace,Consolas,monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;color:var(--text_secondary);max-height:260px;overflow:auto}}
 </style>
 </head>
 <body>
@@ -2168,70 +1675,83 @@ def get_bookmarks_page_html(bookmarks_json: str = "[]") -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bookmarks — Rhodium</title>
 <style>
+{css_vars()}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
-    background: #0b0d10; color: #e8eaed;
+    background: var(--bg_app); color: var(--text_primary);
     font-family: "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
     min-height: 100vh;
 }}
-.page {{ max-width: 920px; margin: 0 auto; padding: 32px 24px 48px; }}
+.page {{ max-width: 920px; margin: 0 auto; padding: 36px 24px 56px; }}
 .header {{
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 26px; gap: 16px; flex-wrap: wrap;
 }}
-.header h1 {{ font-size: 24px; font-weight: 600; letter-spacing: -.02em; }}
+.heading {{ display: flex; align-items: center; gap: 14px; }}
+.heading-icon {{
+    width: 44px; height: 44px; border-radius: 13px;
+    background: var(--accent_soft); color: var(--accent);
+    display: grid; place-items: center;
+}}
+.heading-icon svg {{ width: 22px; height: 22px; }}
+.heading h1 {{ font-size: 22px; font-weight: 700; letter-spacing: -.02em; }}
+.heading .sub {{ font-size: 12px; color: var(--text_muted); margin-top: 2px; }}
 .header-actions {{ display: flex; gap: 10px; align-items: center; flex: 1; justify-content: flex-end; }}
 .search {{
-    background: #181b21; border: 1px solid #2b2f36; border-radius: 9px;
-    color: #e1e4e8; padding: 8px 12px; font-size: 13px; width: min(280px, 100%);
-    outline: none;
+    background: var(--bg_surface); border: 1px solid var(--border_strong); border-radius: 10px;
+    color: var(--text_primary); padding: 9px 14px; font-size: 13px; width: min(280px, 100%);
+    outline: none; transition: border-color .15s, box-shadow .15s;
 }}
-.search:focus {{ border-color: #426cae; }}
-.btn {{
-    background: #1b1e24; color: #c6cad1; border: 1px solid #2b2f36;
-    border-radius: 7px; padding: 8px 14px; font-size: 12px; cursor: pointer;
-}}
-.btn:hover {{ background: #252930; color: #fff; }}
-.btn-danger:hover {{ background: #4a2020; border-color: #6b3030; }}
+.search:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent_soft); }}
 .section {{ margin-bottom: 26px; }}
 .section-title {{
-    font-size: 11px; font-weight: 600; letter-spacing: .08em;
-    text-transform: uppercase; color: #747b86; margin: 18px 4px 10px;
+    font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text_muted); margin: 18px 4px 10px;
 }}
 .list {{ display: flex; flex-direction: column; gap: 6px; }}
 .item {{
-    background: #14171d; border: 1px solid #252b34; border-radius: 10px;
-    padding: 10px 12px; display: grid; grid-template-columns: 30px 1fr auto;
-    gap: 12px; align-items: center; transition: border-color .15s, background .15s;
+    background: var(--bg_surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 14px; display: grid; grid-template-columns: 34px 1fr auto;
+    gap: 12px; align-items: center; transition: border-color .15s, box-shadow .15s;
     cursor: pointer;
 }}
-.item:hover {{ border-color: #353d49; background: #171b22; }}
+.item:hover {{ border-color: var(--border_strong); box-shadow: var(--shadow_sm); }}
 .fav-wrap {{
-    width: 28px; height: 28px; border-radius: 7px; background: #222730;
-    display: grid; place-items: center; overflow: hidden; font-size: 14px;
+    width: 32px; height: 32px; border-radius: 9px; background: var(--bg_sunken);
+    display: grid; place-items: center; overflow: hidden; font-size: 15px;
 }}
-.fav-wrap img {{ width: 20px; height: 20px; }}
+.fav-wrap img {{ width: 22px; height: 22px; }}
 .meta {{ min-width: 0; }}
 .title {{
-    font-size: 13px; font-weight: 600; color: #eef1f5;
+    font-size: 13px; font-weight: 600; color: var(--text_primary);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }}
-.sub {{ font-size: 11px; color: #8b939f; margin-top: 2px;
+.sub {{ font-size: 11px; color: var(--text_secondary); margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 .del {{
-    background: #242932; color: #d5dae3; border: none; border-radius: 6px;
-    padding: 6px 10px; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity .15s;
+    background: var(--bg_sunken); color: var(--text_secondary); border: none; border-radius: 8px;
+    padding: 6px 11px; font-size: 11px; cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s;
 }}
 .item:hover .del {{ opacity: 1; }}
-.del:hover {{ background: #4a2020; color: #ff9c9c; }}
-.empty {{ text-align: center; color: #636b78; padding: 48px 20px; font-size: 13px; }}
-.empty .big {{ font-size: 40px; opacity: .5; margin-bottom: 10px; }}
+.del:hover {{ background: var(--danger_soft); color: var(--danger); }}
+.empty {{ text-align: center; color: var(--text_muted); padding: 48px 20px; font-size: 13px; }}
+.empty .big {{ font-size: 42px; opacity: .5; margin-bottom: 12px; }}
+.empty .hint {{ margin-top: 6px; font-size: 12px; color: var(--text_muted); }}
 </style>
 </head>
 <body>
 <div class="page">
     <div class="header">
-        <h1>Bookmarks</h1>
+        <div class="heading">
+            <div class="heading-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                     stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4Z"/></svg>
+            </div>
+            <div>
+                <h1>Bookmarks</h1>
+                <div class="sub">Your saved places</div>
+            </div>
+        </div>
         <div class="header-actions">
             <input type="search" class="search" id="search" placeholder="Search bookmarks…">
         </div>
@@ -2240,7 +1760,7 @@ body {{
     <div class="empty" id="empty-msg" style="display:none">
         <div class="big">🔖</div>
         <div>No bookmarks yet</div>
-        <div style="margin-top:6px;font-size:12px;color:#555d68">Add a bookmark using the bookmark button or Ctrl+D</div>
+        <div class="hint">Add a bookmark using the bookmark button or Ctrl+D</div>
     </div>
 </div>
 <script>
