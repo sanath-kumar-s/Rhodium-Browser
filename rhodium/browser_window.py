@@ -33,6 +33,7 @@ from rhodium.database import get_database
 from rhodium.suggestions import SuggestionController
 from rhodium.suggestion_popup import SuggestionLineEdit, SuggestionPopup
 from rhodium.cookie_manager import CookieManager
+from rhodium.fullscreen_controller import FullscreenController
 
 
 class RhodiumTabBar(QTabBar):
@@ -112,6 +113,7 @@ class RhodiumTabWidget(QWidget):
 
         strip = QWidget()
         strip.setObjectName("TabStrip")
+        self.strip = strip
         strip_layout = QHBoxLayout(strip)
         strip_layout.setContentsMargins(6, 0, 6, 0)
         strip_layout.setSpacing(4)
@@ -134,6 +136,12 @@ class RhodiumTabWidget(QWidget):
         self.tab_bar.doubleClickedEmpty.connect(lambda: self.browser.add_new_tab())
         self.tab_bar.customContextMenuRequested.connect(self._show_tab_context_menu)
         self.tab_list_button.clicked.connect(self._show_all_tabs_popup)
+
+    def chrome_widget(self):
+        return self.strip
+
+    def set_chrome_visible(self, visible):
+        self.strip.setVisible(visible)
 
     def _on_current_changed(self, index):
         self.stack.setCurrentIndex(index)
@@ -471,7 +479,6 @@ class AdvancedBrowser(QMainWindow):
         self._add_shortcut("Ctrl+N",       self.open_new_window)
         self._add_shortcut("Ctrl+Q",       self.close)
         self._add_shortcut("F5",           self.reload_page)
-        self._add_shortcut("F11",          self.toggle_fullscreen)
         self._add_shortcut("Ctrl++",       self.zoom_in)
         self._add_shortcut("Ctrl+-",       self.zoom_out)
         self._add_shortcut("Ctrl+0",       self.reset_zoom)
@@ -501,6 +508,9 @@ class AdvancedBrowser(QMainWindow):
                 True
             )
         )
+
+        # Central fullscreen controller (browser F11 + website fullscreen).
+        self.fullscreen_controller = FullscreenController(self)
 
         # First tab
         self.add_new_tab()
@@ -695,7 +705,6 @@ class AdvancedBrowser(QMainWindow):
 
         m.addSection("Page")
         m.addAction(icon("search.png"),     "Find in Page",        self.open_find_dialog).setShortcut(QKeySequence("Ctrl+F"))
-        m.addAction(icon("fullscreen.png"), "Toggle Full Screen",  self.toggle_fullscreen).setShortcut(QKeySequence("F11"))
 
         zoom_menu = m.addMenu("Zoom")
         zoom_menu.addAction("Zoom In",    self.zoom_in).setShortcut(QKeySequence("Ctrl++"))
@@ -775,6 +784,10 @@ class AdvancedBrowser(QMainWindow):
         # target="_blank" / window.open() / new-window navigation requests.
         page.newWindowRequested.connect(self.handle_new_window_request)
 
+        fs = getattr(self, "fullscreen_controller", None)
+        if fs is not None:
+            fs.attach_view(view)
+
         idx = self.tab_widget.addTab(view, "New Tab")
         if activate:
             self.tab_widget.setCurrentIndex(idx)
@@ -810,6 +823,10 @@ class AdvancedBrowser(QMainWindow):
             self.closed_tabs_stack.append({"url": url, "title": title})
 
         if self.tab_widget.count() > 1:
+            fs = getattr(self, "fullscreen_controller", None)
+            if fs is not None:
+                fs.on_view_closed(view)
+
             # If closing the active tab, select adjacent tab explicitly
             if index == self.tab_widget.currentIndex():
                 new_index = index - 1 if index > 0 else 1
@@ -1490,9 +1507,6 @@ class AdvancedBrowser(QMainWindow):
     def go_home(self):
         self.load_url("about:home")
 
-    def toggle_fullscreen(self):
-        self.showNormal() if self.isFullScreen() else self.showFullScreen()
-
     def open_new_window(self):
         # Imports here to avoid circular imports during direct instantiation
         from rhodium.browser_window import AdvancedBrowser
@@ -1829,7 +1843,6 @@ class AdvancedBrowser(QMainWindow):
             "Ctrl+-    Zoom Out",
             "Ctrl+0    Reset Zoom",
             "F5        Reload",
-            "F11       Full Screen",
             "F12       Developer Tools Info",
             "Ctrl+,    Settings",
             "Ctrl+Q    Exit",

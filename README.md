@@ -228,7 +228,6 @@ Master RHODIUM with these essential shortcuts:
 | `Ctrl + Shift + R`   | Hard Reload           |
 | `Alt + Left`         | Go Back               |
 | `Alt + Right`        | Go Forward            |
-| `F11`                | Full Screen           |
 | `F12`                | Developer Tools       |
 
 📖 **View all shortcuts:** Help → Keyboard Shortcuts (inside the application)
