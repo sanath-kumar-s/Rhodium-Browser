@@ -31,6 +31,7 @@ from rhodium.resources import (
 from rhodium.settings_dialog import SettingsDialog
 from rhodium.settings_service import get_settings_service, build_search_url, validate_search_url
 from rhodium.settings_page import get_settings_page_html
+from rhodium.settings_bridge import SettingsBridge
 from rhodium.find_bar import FindBar
 from rhodium.web_views import RhodiumWebEnginePage, SmoothWebEngineView
 from rhodium.download_manager import DownloadManager
@@ -823,7 +824,7 @@ class AdvancedBrowser(QMainWindow):
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
         elif url.split("?")[0] == "rhodium://settings":
-            self.show_settings_in_view(view, url)
+            self.show_settings_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1046,7 +1047,7 @@ class AdvancedBrowser(QMainWindow):
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
         elif url.split("?")[0] == "rhodium://settings":
-            self.show_settings_in_view(view, url)
+            self.show_settings_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1065,7 +1066,7 @@ class AdvancedBrowser(QMainWindow):
         elif url.split("?")[0] == "rhodium://bookmarks":
             self.show_bookmarks_in_view(view)
         elif url.split("?")[0] == "rhodium://settings":
-            self.show_settings_in_view(view, url)
+            self.show_settings_in_view(view)
         else:
             self._load_in_view(url, view)
 
@@ -1867,17 +1868,27 @@ class AdvancedBrowser(QMainWindow):
         self.refresh_settings_tabs()
 
     # ── Settings page rendering ─────────────────────────────────────────────
-    def show_settings_in_view(self, view, url_string=None):
-        cat = "general"
-        try:
-            src = url_string or view.url().toString()
-            if "?" in src:
-                from urllib.parse import parse_qs
-                qs = parse_qs(src.split("?", 1)[1])
-                if "cat" in qs:
-                    cat = qs["cat"][0]
-        except Exception:
+    VALID_SETTINGS_CATS = (
+        "general", "search", "privacy", "cookies", "downloads",
+        "bookmarks", "history", "appearance", "tabs",
+        "permissions", "passwords",
+    )
+
+    def show_settings_in_view(self, view, cat=None):
+        if cat is None:
             cat = "general"
+            try:
+                url_str = view.url().toString()
+                if "?" in url_str:
+                    from urllib.parse import parse_qs
+                    qs = parse_qs(url_str.split("?", 1)[1])
+                    if "cat" in qs:
+                        cat = qs["cat"][0]
+            except Exception:
+                cat = "general"
+        if cat not in self.VALID_SETTINGS_CATS:
+            cat = "general"
+        self._ensure_settings_channel(view.page())
         payload = self._build_settings_payload(cat)
         html = get_settings_page_html(payload)
         target = f"rhodium://settings?cat={cat}"
@@ -1887,6 +1898,89 @@ class AdvancedBrowser(QMainWindow):
             self.tab_widget.setTabText(idx, "Settings")
             self.tab_widget.setTabToolTip(idx, "Settings — Rhodium")
             self.tab_widget.setTabIcon(idx, icon("settings.png"))
+
+    def _ensure_settings_channel(self, page):
+        """Attach the shared QWebChannel (with the SettingsBridge) to a page."""
+        try:
+            from PyQt6.QtWebChannel import QWebChannel
+        except Exception:
+            return
+        if getattr(self, "_settings_channel", None) is None:
+            channel = QWebChannel(self)
+            channel.registerObject("bridge", SettingsBridge(self))
+            self._settings_channel = channel
+        try:
+            page.setWebChannel(self._settings_channel)
+        except Exception:
+            pass
+
+    def handle_settings_route(self, url_str):
+        """Dispatch a ``rhodium://settings-*`` action URL to its handler.
+
+        Used by the SettingsBridge (QWebChannel) so the page's buttons work
+        without relying on in-page custom-scheme navigation.  The same handler
+        methods used by ``acceptNavigationRequest`` are reused here.
+        """
+        from urllib.parse import parse_qs
+        try:
+            scheme_split = url_str.split("?", 1)
+            path = scheme_split[0]
+            params = parse_qs(scheme_split[1]) if len(scheme_split) > 1 else {}
+        except Exception:
+            return
+        cat = (params.get("cat", ["general"])[0] if params.get("cat")
+               else "general")
+        if cat not in self.VALID_SETTINGS_CATS:
+            cat = "general"
+
+        if path == "rhodium://settings":
+            view = self.get_current_view()
+            if view is not None:
+                self.show_settings_in_view(view, cat=cat)
+        elif path == "rhodium://downloads":
+            self.open_downloads_page()
+        elif path == "rhodium://bookmarks":
+            self.open_bookmarks_page()
+        elif path == "rhodium://history":
+            self.open_history_page()
+        elif path == "rhodium://settings-reset":
+            self.handle_settings_reset(cat)
+        elif path == "rhodium://settings-search-delete":
+            self.handle_settings_search_delete(params.get("id", [""])[0], cat)
+        elif path == "rhodium://settings-search-restore":
+            self.handle_settings_search_restore(cat)
+        elif path == "rhodium://settings-search-add":
+            self.handle_settings_search_add(params, cat)
+        elif path == "rhodium://settings-search-edit":
+            self.handle_settings_search_edit(params, cat)
+        elif path == "rhodium://settings-cookie-delete":
+            self.handle_settings_cookie_delete(
+                params.get("name", [""])[0], params.get("domain", [""])[0], cat)
+        elif path == "rhodium://settings-cookie-delete-domain":
+            self.handle_settings_cookie_delete_domain(
+                params.get("domain", [""])[0], cat)
+        elif path == "rhodium://settings-cookie-clear":
+            self.handle_settings_cookie_clear(cat)
+        elif path == "rhodium://settings-history-clear":
+            self.handle_settings_history_clear(
+                params.get("range", ["all"])[0], cat)
+        elif path == "rhodium://settings-history-open":
+            self.open_history_page()
+        elif path == "rhodium://settings-clear-data":
+            self.handle_settings_clear_data(
+                params.get("what", ["all"])[0], cat)
+        elif path == "rhodium://settings-downloads-browse":
+            self.handle_settings_downloads_browse(cat)
+        elif path == "rhodium://settings-downloads-open-folder":
+            self.handle_settings_downloads_open_folder(cat)
+        elif path == "rhodium://settings-downloads-clear":
+            self.handle_settings_downloads_clear(cat)
+        elif path == "rhodium://settings-bookmarks-open":
+            self.handle_settings_bookmarks_open(cat)
+        elif path == "rhodium://settings-bookmarks-import":
+            self.handle_settings_bookmarks_import(cat)
+        elif path == "rhodium://settings-bookmarks-export":
+            self.handle_settings_bookmarks_export(cat)
 
     def refresh_settings_tabs(self):
         for i in range(self.tab_widget.count()):

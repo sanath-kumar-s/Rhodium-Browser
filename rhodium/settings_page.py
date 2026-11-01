@@ -724,6 +724,56 @@ body {{
     .ctl-input {{ min-width: 160px; }}
 }}
 </style>
+<script>
+/* Minimal QWebChannel client (mirrors Qt's qwebchannel.js message protocol).
+   QtWebEngine injects qt.webChannelTransport once page.setWebChannel() is
+   called; this client performs the init handshake and exposes the Python
+   "bridge" object (rhodium.settings_bridge.SettingsBridge). */
+(function () {{
+    var T = {{
+        signal: 1, propertyUpdate: 2, init: 3, invokeMethod: 6,
+        connect: 7, disconnect: 8, setProperty: 9, response: 10
+    }};
+    function QWebChannel(transport, ready) {{
+        this.transport = transport;
+        this.execId = 0;
+        this.pending = {{}};
+        this.objects = {{}};
+        var self = this;
+        this.transport.onmessage = function (e) {{ self._onMessage(e); }};
+        this.exec({{ type: T.init }}, function (objs) {{
+            for (var id in objs) self._createObject(objs[id], id);
+            if (ready) ready(self.objects);
+        }});
+    }}
+    QWebChannel.prototype.exec = function (data, cb) {{
+        data.id = ++this.execId;
+        if (cb) this.pending[data.id] = cb;
+        this.transport.send(JSON.stringify(data));
+    }};
+    QWebChannel.prototype._onMessage = function (e) {{
+        var raw = (e && e.data !== undefined) ? e.data : e;
+        var d = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+        if (d.type === T.response && this.pending[d.id]) {{
+            var cb = this.pending[d.id];
+            delete this.pending[d.id];
+            cb(d.data);
+        }}
+    }};
+    QWebChannel.prototype._createObject = function (def, id) {{
+        var self = this, obj = {{}};
+        (def.methods || []).forEach(function (m) {{
+            var name = (typeof m === 'string') ? m : m[0];
+            obj[name] = function () {{
+                var args = Array.prototype.slice.call(arguments);
+                self.exec({{ type: T.invokeMethod, object: id, method: name, args: args }});
+            }};
+        }});
+        this.objects[id] = obj;
+    }};
+    window.QWebChannel = QWebChannel;
+}})();
+</script>
 </head>
 <body>
 <div class="layout">
@@ -757,7 +807,19 @@ const CAT = {json.dumps(cat)};
 const NAV = document.querySelectorAll('.nav-item');
 const countEl = document.getElementById('result-count');
 
+function getBridge() {{
+    return window.__bridge || null;
+}}
+
+if (window.QWebChannel && window.qt && window.qt.webChannelTransport) {{
+    new QWebChannel(qt.webChannelTransport, function (objects) {{
+        window.__bridge = objects.bridge;
+    }});
+}}
+
 function navTo(cat) {{
+    const b = getBridge();
+    if (b) {{ b.navigate(cat); return; }}
     window.location.href = 'rhodium://settings?cat=' + encodeURIComponent(cat);
 }}
 
@@ -781,6 +843,7 @@ filterEl.addEventListener('input', applyFilter);
 
 // Generic single-key setter (select, radio, toggle, text commit)
 function applySet(el) {{
+    const b = getBridge();
     const key = el.dataset.set;
     const cat = el.dataset.cat || CAT;
     let value;
@@ -789,6 +852,7 @@ function applySet(el) {{
     }} else {{
         value = el.value;
     }}
+    if (b) {{ b.set_setting(key, value, cat); return; }}
     window.location.href = 'rhodium://settings-set?cat=' + encodeURIComponent(cat)
         + '&key=' + encodeURIComponent(key) + '&value=' + encodeURIComponent(value);
 }}
@@ -818,6 +882,8 @@ document.querySelectorAll('[data-route]').forEach(btn => {{
     btn.addEventListener('click', () => {{
         const confirmMsg = btn.dataset.confirm;
         if (confirmMsg && !window.confirm(confirmMsg)) return;
+        const b = getBridge();
+        if (b) {{ b.route(btn.dataset.route); return; }}
         window.location.href = btn.dataset.route;
     }});
 }});
@@ -838,11 +904,14 @@ if (addBtn) {{
             alert('The search URL must contain {{searchTerms}}.');
             return;
         }}
-        window.location.href = 'rhodium://settings-search-add?cat=search'
+        const target = 'rhodium://settings-search-add?cat=search'
             + '&name=' + encodeURIComponent(name)
             + '&url=' + encodeURIComponent(url)
             + '&suggest=' + encodeURIComponent(suggest)
             + '&keyword=' + encodeURIComponent(keyword);
+        const b = getBridge();
+        if (b) {{ b.route(target); return; }}
+        window.location.href = target;
     }});
 }}
 
